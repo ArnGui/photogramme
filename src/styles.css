@@ -389,7 +389,10 @@ kbd {
 .hud-toggle .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 0.8s infinite alternate; }
 @keyframes pulse { from { opacity: 0.3; } to { opacity: 1; } }
 .viewer-hud { align-items: center; }
-.preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* object-fit: contain sur tout ce qui affiche l'image : le navigateur garde
+   toujours le ratio des pixels, même si la boîte n'est pas (encore) au bon
+   format. Une image ne peut jamais être aplatie ni étirée à l'écran. */
+.preview-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .viewer-box video { position: absolute; inset: 0; }
 
 /* ───── Code-barre et coupes ───── */
@@ -546,7 +549,7 @@ textarea.text { resize: vertical; font-family: var(--f-mono); }
 .viewer-stage.is-zoomed:active { cursor: grabbing; }
 .viewer-stage.is-zoomed .viewer-box { margin: auto; }
 .viewer-stage.is-zoomed video, .viewer-stage.is-zoomed .preview-canvas { image-rendering: pixelated; }
-.ref-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.ref-canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .wipe-handle {
   position: absolute; top: 0; bottom: 0; width: 24px; margin-left: -12px; cursor: ew-resize; touch-action: none;
 }

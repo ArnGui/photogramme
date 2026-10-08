@@ -14,7 +14,7 @@ import {
   BarcodeStrip, CapturesPanel, EmptyState, rangeOf, ScopesPanel, TabBar, Timeline, Toast, TopBar, Transport, UpdateBanner,
   Viewer, Warnings,
 } from "./components";
-import type { Compare, ToastState, Zoom } from "./components";
+import type { Compare, PreviewSize, ToastState, Zoom } from "./components";
 import { ExtractPanel } from "./ExtractPanel";
 import type { JobState, Output } from "./ExtractPanel";
 import { SettingsPanel } from "./SettingsPanel";
@@ -65,7 +65,7 @@ export default function App() {
   const [preview, setPreview] = useState(false);
   const [still, setStill] = useState<FrameData | null>(null);
   const [stillLoading, setStillLoading] = useState(false);
-  const [previewSize, setPreviewSize] = useState<{ w: number; h: number } | null>(null);
+  const [previewSize, setPreviewSize] = useState<PreviewSize | null>(null);
   const [zoom, setZoom] = useState<Zoom>("fit");
   const [compare, setCompare] = useState<Compare | null>(null);
   const [cors, setCors] = useState(true);
@@ -584,7 +584,10 @@ export default function App() {
       if (!alive) return;
       const tokens = makeTokens(info.fileName, still.timecode, still.frame, null, info.fps, still.width, still.height, still.clip);
       const L = render(c, imageOf(still), effectivePreset, still.palette, tokens);
-      setPreviewSize((p) => (p && p.w === L.width && p.h === L.height ? p : { w: L.width, h: L.height }));
+      setPreviewSize((p) =>
+        p && p.w === L.width && p.h === L.height && p.image.x === L.image.x && p.image.y === L.image.y
+          ? p
+          : { w: L.width, h: L.height, image: L.image });
     });
     return () => {
       alive = false;
