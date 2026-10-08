@@ -221,11 +221,13 @@ jobs:
               "The FFmpeg archive attached to this release is the exact source code of the FFmpeg programs bundled in both versions (LGPL). The Mac build recipe is ``scripts/build-ffmpeg-macos.sh``.",
           ])
           pathlib.Path("body.md").write_text(body, encoding="utf-8")
-          with open(os.environ["GITHUB_ENV"], "a") as env:
-              env.write(f"FFMPEG_COMMIT={lock['commit']}\nFFMPEG_SOURCE={lock['source']}\n")
           PY
-          src="ffmpeg-source-${FFMPEG_COMMIT:0:12}.tar.gz"
-          curl -fsSL -o "$src" "$FFMPEG_SOURCE"
+          # Lus ici : une variable écrite dans GITHUB_ENV n'existe qu'aux étapes SUIVANTES.
+          commit=$(python3 -c "import json; print(json.load(open('scripts/ffmpeg.lock', encoding='utf-8-sig'))['commit'])")
+          source=$(python3 -c "import json; print(json.load(open('scripts/ffmpeg.lock', encoding='utf-8-sig'))['source'])")
+          test -n "$commit" && test -n "$source"
+          src="ffmpeg-source-${commit:0:12}.tar.gz"
+          curl -fsSL -o "$src" "$source"
           echo "SRC=$src" >> "$GITHUB_ENV"
 
       - name: Draft release
