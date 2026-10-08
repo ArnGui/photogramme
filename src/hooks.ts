@@ -174,22 +174,40 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
   return { videoRef, frame, frameRef, playing: playing || shuttleSpeed < 0, shuttleSpeed, seek, step, togglePlay, shuttle };
 }
 
-/** Plus grand rectangle au ratio donné tenant dans le conteneur. */
+/**
+ * Plus grand rectangle au ratio donné tenant dans le conteneur.
+ * Le conteneur est mesuré par le ResizeObserver ; la boîte est recalculée à
+ * chaque rendu à partir du ratio courant. Ainsi un changement de ratio
+ * (marges, bande de palette, préréglage) donne la bonne boîte dans le même
+ * rendu, sans attendre un nouveau passage de l'observateur.
+ */
 export function useFitBox(ref: RefObject<HTMLElement | null>, aspect: number) {
-  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [area, setArea] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect;
       if (width <= 0 || height <= 0) return;
-      const w = Math.min(width, height * aspect);
-      setBox({ w: Math.floor(w), h: Math.floor(w / aspect) });
+      setArea((a) => (a.w === width && a.h === height ? a : { w: width, h: height }));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref, aspect]);
-  return box;
+  }, [ref]);
+  return fitBox(area.w, area.h, aspect);
+}
+
+/** Plus grand rectangle de ratio `aspect` dans `w`×`h` (pure, testée). */
+export function fitBox(w: number, h: number, aspect: number): { w: number; h: number } {
+  if (!(w > 0 && h > 0 && aspect > 0 && Number.isFinite(aspect))) return { w: 0, h: 0 };
+  // Le côté limitant est arrondi vers le bas, l'autre en découle : l'écart au
+  // ratio exact reste sous un pixel, et object-fit: contain absorbe le reste.
+  if (w / h > aspect) {
+    const bh = Math.floor(h);
+    return { w: Math.round(bh * aspect), h: bh };
+  }
+  const bw = Math.floor(w);
+  return { w: bw, h: Math.round(bw / aspect) };
 }
 
 /** Valeur retardée : ne change qu'après `ms` d'immobilité. */

@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PointerEvent as RPointerEvent, ReactNode, RefObject } from "react";
+import type { CSSProperties, PointerEvent as RPointerEvent, ReactNode, RefObject } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, nearThumbUrl } from "./api";
 import { useFitBox, useWidth } from "./hooks";
@@ -155,6 +155,27 @@ export interface Compare {
   split: number;
 }
 
+/** Taille de la composition affichée dans l'aperçu et place de l'image du film dedans. */
+export interface PreviewSize {
+  w: number;
+  h: number;
+  image: { x: number; y: number; w: number; h: number };
+}
+
+/**
+ * Découpe du volet A/B : la position du volet est en fraction de la boîte
+ * entière ; convertie ici en fraction du canvas de référence, qui peut ne
+ * couvrir que la zone image de la composition.
+ */
+function refClip(split: number, p: PreviewSize | null): string {
+  let right = 1 - split;
+  if (p) {
+    const edge = (split * p.w - p.image.x) / p.image.w;
+    right = 1 - Math.min(1, Math.max(0, edge));
+  }
+  return `inset(0 ${right * 100}% 0 0)`;
+}
+
 /** Dessine une image exacte sur un canvas (taille native). */
 function useImageCanvas(ref: RefObject<HTMLCanvasElement | null>, data: FrameData | null) {
   useEffect(() => {
@@ -178,7 +199,7 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
   videoRef: RefObject<HTMLVideoElement | null>;
   frame: number;
   preview: boolean;
-  previewSize: { w: number; h: number } | null;
+  previewSize: PreviewSize | null;
   previewState: "idle" | "loading" | "ready" | "playing";
   onTogglePreview: () => void;
   zoom: Zoom;
@@ -198,7 +219,18 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
   const fit = useFitBox(stage, nativeW / nativeH);
   const dpr = window.devicePixelRatio || 1;
   const box = zoom === "fit" ? fit : { w: Math.round((nativeW * zoom) / dpr), h: Math.round((nativeH * zoom) / dpr) };
-  useImageCanvas(refCanvas, compare?.ref ?? null);
+  // Redessinée à chaque réaffichage du volet (le canvas est recréé quand on le rallume).
+  useImageCanvas(refCanvas, compare?.on ? compare.ref : null);
+  // Avec l'aperçu d'export, la référence A est posée sur la zone de l'image du film
+  // dans la composition (pas sur les marges ni la bande) : même échelle, même place.
+  const refStyle: CSSProperties = showCanvas
+    ? {
+        left: `${(previewSize.image.x / previewSize.w) * 100}%`,
+        top: `${(previewSize.image.y / previewSize.h) * 100}%`,
+        width: `${(previewSize.image.w / previewSize.w) * 100}%`,
+        height: `${(previewSize.image.h / previewSize.h) * 100}%`,
+      }
+    : {};
 
   // Déplacement de l'image zoomée à la souris.
   const drag = useRef<{ x: number; y: number; sl: number; st: number } | null>(null);
@@ -274,7 +306,7 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
           {children}
           {compare?.on && (
             <>
-              <canvas ref={refCanvas} className="ref-canvas" style={{ clipPath: `inset(0 ${(1 - compare.split) * 100}% 0 0)` }} />
+              <canvas ref={refCanvas} className="ref-canvas" style={{ ...refStyle, clipPath: refClip(compare.split, showCanvas ? previewSize : null) }} />
               <div className="wipe-handle" style={{ left: `${compare.split * 100}%` }}
                 onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); onWipe(e); }} onPointerMove={onWipe}
                 role="slider" aria-label="A/B wipe position" aria-valuenow={Math.round(compare.split * 100)} tabIndex={0}
