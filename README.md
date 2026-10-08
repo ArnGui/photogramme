@@ -100,7 +100,7 @@ Waveform, RGB parade, vectorscope (BT.709, 75 % targets, skin tone line) and his
 
 ### Color management
 
-Three honest choices, no magic:
+Three choices:
 
 - **As is**: the decoded pixels, untouched.
 - **Rec.709 / BT.1886** (gamma 2.4): tagged with the matching ICC profile, for color-managed apps (Photoshop, Lightroom, Affinity).
@@ -182,7 +182,7 @@ It ships FFmpeg (`ffmpeg.exe` and `ffprobe.exe`), run as separate programs, unde
 
 ## Author
 
-Made by **Arnaud Guillard**, documentary director and cinematographer, in Lodève, France. I built Photogramme for my own work (contact sheets for clients, stills for festivals and press kits, color references before a grade) and figured I couldn't be the only one losing afternoons to screenshots.
+Made by **me**, documentary director and cinematographer living in France. I built Photogramme for my own work (contact sheets for clients, stills for festivals and press kits, color references before a grade) and figured I couldn't be the only one losing afternoons to screenshots.
 
 **Full disclosure: I'm not a developer.** I know what I need from an image, not how to write a video decoder. Photogramme was designed by me and written with the help of Claude, Anthropic's AI, one decision at a time. It is tested against the real FFmpeg on real films, and every choice is logged in [`docs/DECISIONS.md`](docs/DECISIONS.md), but you won't find a team or a company behind it. No business model either: I made a tool that is useful to me and I'm sharing it for free, in case it's useful to you too. Bug reports are welcome. Fixes will come at a filmmaker's pace, between two shoots.
 
