@@ -1,0 +1,75 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Photogramme",
+  "version": "0.5.0",
+  "identifier": "fr.arnaudguillard.photogramme",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Photogramme",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "backgroundColor": "#0B0B0C"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost thumb: http://thumb.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; img-src 'self' asset: http://asset.localhost thumb: http://thumb.localhost data: blob:; media-src 'self' asset: http://asset.localhost blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost ws://localhost:1420",
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "bundle": {
+    "resources": {
+      "../THIRD_PARTY_NOTICES.txt": "THIRD_PARTY_NOTICES.txt",
+      "../THIRD_PARTY_LICENSES.txt": "THIRD_PARTY_LICENSES.txt",
+      "../LICENSE": "LICENSE.txt"
+    },
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "externalBin": [
+      "binaries/ffmpeg",
+      "binaries/ffprobe"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico"
+    ],
+    "copyright": "Arnaud Guillard",
+    "shortDescription": "Film stills and color palettes",
+    "license": "GPL-3.0-or-later. Uses FFmpeg under the LGPL v3",
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFNkEzMzc4NzkxOTc0MDMKUldRRGRCbDVlRE5xTG0zRXRtRXIrRitBOHdzNlpDeXNieGR5dmFwWFhvSUgwamNMdWJ1bVhMRHkK",
+      "endpoints": [
+        "https://github.com/ArnGui/photogramme/releases/latest/download/latest.json"
+      ],
+      "requireSignedVersion": true,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

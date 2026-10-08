@@ -1,0 +1,23 @@
+# cargo-about configuration: licenses accepted for the crates compiled into Photogramme.
+# All of them are compatible with the GPL v3. If cargo-about reports a crate whose
+# license is not listed, check it is GPL-compatible before adding it here.
+accepted = [
+    "MIT",
+    "IJG",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "MPL-2.0",
+    "CC0-1.0",
+    "BSL-1.0",
+    "0BSD",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-or-later",
+]
+targets = ["x86_64-pc-windows-msvc"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true

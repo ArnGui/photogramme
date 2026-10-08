@@ -1,0 +1,23 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/*.exe
+src-tauri/binaries/FFMPEG-LICENSE.txt
+*.log
+
+# Added for GitHub: build output, FFmpeg binaries (too large, see README), films, backups
+src-tauri/gen/schemas/
+src-tauri/binaries/*.dll
+*.bak
+*.before-preview
+*.mp4
+*.mov
+*.mkv
+*.mxf
+*.avi
+.env
+.env.*
+
+# Files attached to GitHub releases, not versioned
+release-extras/

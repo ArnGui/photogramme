@@ -1,0 +1,17 @@
+[package]
+name = "photogramme-core"
+version = "0.5.0"
+edition = "2021"
+description = "Logique métier de Photogramme : sonde vidéo, arguments FFmpeg, encodage JPEG, timecode, réglages. Aucune dépendance Tauri."
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+jpeg-encoder = { version = "0.7", features = ["simd"] }
+# PNG sans perte (déjà compilé pour Tauri : aucun poids en plus).
+png = "0.18"
+# Lecture des XML de montage (FCP 7, FCPXML). Petit, sans dépendance.
+roxmltree = "0.21"
+
+[dev-dependencies]

@@ -1,0 +1,115 @@
+# Builds, signs (updater) and drafts a GitHub release when a tag vX.Y.Z is pushed
+# (scripts/release.ps1 does that). Publishing the draft stays a manual step.
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Version matches the tag
+        shell: pwsh
+        run: |
+          $v = (Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$v" -ne "${{ github.ref_name }}") { throw "tauri.conf.json says $v but the tag is ${{ github.ref_name }}." }
+          $pub = (Get-Content -Raw src-tauri/tauri.conf.json | ConvertFrom-Json).plugins.updater.pubkey
+          if (-not $pub) { throw "No updater public key in tauri.conf.json: run scripts/setup-updater.ps1." }
+
+      - name: FFmpeg (pinned, SHA-256 verified)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if (-not (Test-Path scripts/ffmpeg.lock)) { throw "scripts/ffmpeg.lock is missing: run scripts/mirror-ffmpeg.ps1." }
+          ./scripts/setup-ffmpeg.ps1
+          $lock = Get-Content -Raw scripts/ffmpeg.lock | ConvertFrom-Json
+          $notices = Get-Content -Raw THIRD_PARTY_NOTICES.txt
+          if (-not $notices.Contains($lock.commit)) {
+            throw "THIRD_PARTY_NOTICES.txt does not link FFmpeg commit $($lock.commit): run scripts/mirror-ffmpeg.ps1."
+          }
+
+      - run: npm ci
+
+      - name: Tests (core, interface)
+        shell: pwsh
+        env:
+          PHOTOGRAMME_FFMPEG: ${{ github.workspace }}\src-tauri\binaries\ffmpeg-x86_64-pc-windows-msvc.exe
+          PHOTOGRAMME_FFPROBE: ${{ github.workspace }}\src-tauri\binaries\ffprobe-x86_64-pc-windows-msvc.exe
+        run: |
+          cargo test --manifest-path src-tauri/core/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build and sign the installer
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --config src-tauri/tauri.release.json
+
+      - name: Draft release (installer, signature, latest.json, FFmpeg source)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag.Substring(1)
+          $repo = "${{ github.repository }}"
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $exe) { throw "No NSIS installer was built." }
+          $sigPath = "$($exe.FullName).sig"
+          if (-not (Test-Path $sigPath)) { throw "No updater signature (.sig) next to the installer." }
+          $sig = (Get-Content -Raw $sigPath).Trim()
+          $notesFile = "docs/release-notes/$tag.md"
+          $notes = if (Test-Path $notesFile) { (Get-Content -Raw $notesFile).Trim() } else { "Photogramme $ver" }
+          $url = "https://github.com/$repo/releases/download/$tag/$($exe.Name)"
+          $platform = @{ signature = $sig; url = $url }
+          $latest = [ordered]@{
+            version   = $ver
+            notes     = $notes
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{ "windows-x86_64-nsis" = $platform; "windows-x86_64" = $platform }
+          }
+          $latest | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM latest.json
+
+          $lock = Get-Content -Raw scripts/ffmpeg.lock | ConvertFrom-Json
+          $src = "ffmpeg-source-$($lock.commit.Substring(0, 12)).tar.gz"
+          Invoke-WebRequest -Uri $lock.source -OutFile $src -UseBasicParsing
+
+          $sha = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLowerInvariant()
+          $lines = @(
+            $notes, "",
+            "## Install", "",
+            "Download **$($exe.Name)** below. Windows 10 or 11, 64-bit. Installed copies update themselves (Settings > About).", "",
+            "The installer is not code-signed yet, so Windows SmartScreen may warn the first time: click *More info*, then *Run anyway*.",
+            "To check the file before running it, ``Get-FileHash .\$($exe.Name)`` in PowerShell must print:", "",
+            "``$sha``", "",
+            "An NVIDIA card (GTX 10 series or newer) speeds up the analysis. Without one, everything runs on the processor.", "",
+            "The FFmpeg archive attached to this release is the exact source code of the ``ffmpeg.exe`` and ``ffprobe.exe`` bundled in the installer (LGPL)."
+          )
+          $lines -join "`n" | Set-Content -Encoding utf8NoBOM body.md
+          gh release create $tag --draft --title "Photogramme $ver" --notes-file body.md $exe.FullName $sigPath latest.json $src

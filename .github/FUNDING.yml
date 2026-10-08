@@ -1,0 +1,3 @@
+# "Sponsor" button on the GitHub page. Put your Ko-fi name after ko_fi: and
+# remove the # (the same name goes in src-tauri/src/app_cmd.rs, KOFI_HANDLE).
+# ko_fi: your-name
