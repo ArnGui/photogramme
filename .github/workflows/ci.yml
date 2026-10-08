@@ -122,9 +122,16 @@ jobs:
           for i in $(seq 1 30); do se 'key code 124' >/dev/null; done
           sleep 2
           screencapture -x "$shots/2-thirty-frames-later.png"
-          se 'click (first button of entire contents of window 1 whose name is "ANALYZE THE FILM")'
-          sleep 20
-          screencapture -x "$shots/3-after-analysis.png"
+          # ⌘O : le sélecteur natif doit s'ouvrir (puis Échap).
+          se 'keystroke "o" using command down'
+          sleep 3
+          screencapture -x "$shots/3-command-o.png"
+          se 'key code 53'
+          sleep 2
+          # « ANALYZE THE FILM » : position fixe sur l'écran 1024×768 du runner.
+          se 'click at {800, 494}'
+          sleep 25
+          screencapture -x "$shots/4-after-analysis.png"
           pgrep -f "Photogramme.app/Contents/MacOS" >/dev/null && echo "App still running: OK" || { echo "The app quit or crashed."; cat "$RUNNER_TEMP/app.log"; exit 1; }
           pkill -f "Photogramme.app/Contents/MacOS" || true
           echo "--- app log"; cat "$RUNNER_TEMP/app.log" || true
