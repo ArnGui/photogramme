@@ -73,6 +73,9 @@ pub fn run() {
                 let _ = app.asset_protocol_scope().allow_directory(dir, false);
             }
             app.manage(AppState::new(loaded, settings_path, config.join("presets"), projects, pubkey.is_some()));
+            if let Some(film) = film::startup_film(std::env::args()) {
+                film::open_at_startup(app.handle(), &film);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

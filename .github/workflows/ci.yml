@@ -38,6 +38,9 @@ jobs:
   macos:
     runs-on: macos-15
     timeout-minutes: 45
+    permissions:
+      # Pousse les captures d'écran sur la branche ci-screenshots (pushs seulement).
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -96,3 +99,49 @@ jobs:
           path: src-tauri/target/release/bundle/dmg/*.dmg
           retention-days: 7
           if-no-files-found: error
+
+      # Real launch on the runner's screen: the app opens a test film passed on
+      # the command line, then screenshots at each step. Clicks and keys go
+      # through System Events and are best effort (they need accessibility rights).
+      - name: Launch the app and take screenshots
+        run: |
+          app="$PWD/src-tauri/target/release/bundle/macos/Photogramme.app"
+          shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
+          film="$RUNNER_TEMP/Test film.mp4"
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "testsrc2=s=1920x1080:r=24:d=4" \
+            -f lavfi -i "smptehdbars=s=1920x1080:r=24:d=4" \
+            -f lavfi -i "gradients=s=1920x1080:r=24:d=4" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1,format=yuv420p" -c:v libx264 -crf 18 "$film"
+          system_profiler SPDisplaysDataType | grep -E 'Resolution|Chipset|Metal' || true
+          open -n "$app" --stdout "$RUNNER_TEMP/app.log" --stderr "$RUNNER_TEMP/app.log" --args "$film"
+          sleep 25
+          screencapture -x "$shots/1-film-opened.png"
+          se() { perl -e 'alarm shift; exec @ARGV' 20 osascript -e "tell application \"System Events\" to tell process \"Photogramme\" to $1" || echo "System Events: $1 refused"; }
+          se 'set frontmost to true'
+          for i in $(seq 1 30); do se 'key code 124' >/dev/null; done
+          sleep 2
+          screencapture -x "$shots/2-thirty-frames-later.png"
+          se 'click (first button of entire contents of window 1 whose name is "ANALYZE THE FILM")'
+          sleep 20
+          screencapture -x "$shots/3-after-analysis.png"
+          pgrep -f "Photogramme.app/Contents/MacOS" >/dev/null && echo "App still running: OK" || { echo "The app quit or crashed."; cat "$RUNNER_TEMP/app.log"; exit 1; }
+          pkill -f "Photogramme.app/Contents/MacOS" || true
+          echo "--- app log"; cat "$RUNNER_TEMP/app.log" || true
+          cp "$RUNNER_TEMP/app.log" "$shots/app.log" || true
+          ls -l "$shots"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Photogramme-macos-screenshots
+          path: ${{ runner.temp }}/shots
+          retention-days: 7
+      - name: Publish the screenshots on the ci-screenshots branch
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/shots"
+          git init -q -b ci-screenshots
+          git add .
+          git -c user.name="Photogramme CI" -c user.email="ci@users.noreply.github.com" commit -qm "macOS screenshots of ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots

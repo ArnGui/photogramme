@@ -79,6 +79,30 @@ pub enum FilmEvent {
     Failed { message: String },
 }
 
+/// Film passé en argument au lancement (« Ouvrir avec » sous Windows,
+/// `open Photogramme.app --args film.mp4` sur Mac, tests de la CI) :
+/// premier argument qui est un fichier vidéo existant. Les options
+/// (`-psn_…` ajouté par d'anciens macOS) sont ignorées.
+pub fn startup_film(args: impl IntoIterator<Item = String>) -> Option<PathBuf> {
+    args.into_iter().skip(1).filter(|a| !a.starts_with('-')).map(PathBuf::from).find(|p| {
+        p.extension()
+            .map(|e| VIDEO_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str()))
+            .unwrap_or(false)
+            && p.is_file()
+    })
+}
+
+/// Ouvre le film passé au lancement, AVANT que l'interface ne se charge :
+/// elle le trouve en demandant `current_video`, comme après un rechargement.
+/// Même chemin que le sélecteur (sonde, scope asset fichier par fichier).
+pub fn open_at_startup<R: Runtime>(app: &AppHandle<R>, path: &Path) {
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let path = path.to_string_lossy().to_string();
+    if let Err(e) = tauri::async_runtime::block_on(open_video_impl(app, &state, &path)) {
+        eprintln!("Photogramme: cannot open {path}: {e}");
+    }
+}
+
 /// Fichiers déposés sur la fenêtre : ouverture du premier film reconnu.
 pub fn on_drop<R: Runtime>(app: &AppHandle<R>, paths: &[PathBuf]) {
     let film = paths.iter().find(|p| {
