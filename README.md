@@ -8,9 +8,10 @@ Built out of pure laziness. Then it got a bit out of hand.
 
 [![Latest release](https://img.shields.io/github/v/release/ArnGui/photogramme?label=download&color=2ea043)](https://github.com/ArnGui/photogramme/releases/latest)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4)
+![macOS beta](https://img.shields.io/badge/macOS-beta%20%C2%B7%20Apple%20Silicon-555555)
 [![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-[**Download for Windows**](https://github.com/ArnGui/photogramme/releases/latest) · [Guide en français](docs/GUIDE-FR.md) · [Report a bug](https://github.com/ArnGui/photogramme/issues)
+[**Download for Windows**](https://github.com/ArnGui/photogramme/releases/latest) · [**Download for Mac (beta)**](https://github.com/ArnGui/photogramme/releases/latest) · [Guide en français](docs/GUIDE-FR.md) · [Report a bug](https://github.com/ArnGui/photogramme/issues)
 
 </div>
 
@@ -68,7 +69,7 @@ Built out of pure laziness. Then it got a bit out of hand.
 
 Windows 10 or 11, 64-bit. H.264 video (MP4, MOV, MKV). An NVIDIA card is optional.
 
-### macOS
+### macOS (beta)
 
 1. Download `Photogramme_x.y.z_aarch64.dmg` from the [latest release](https://github.com/ArnGui/photogramme/releases/latest), open it and drag Photogramme into Applications.
 2. The first launch is blocked because the app is not notarized by Apple (that takes a paid developer account). Open **System Settings > Privacy & Security**, scroll down, click **Open Anyway** next to Photogramme. Only once.
