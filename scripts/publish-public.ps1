@@ -281,7 +281,7 @@ else {
 
 $app = Join-Path $Root 'src\App.tsx'
 $a = Load $app
-$legalText = "Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv$lgpl. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt in the installation folder."
+$legalText = "Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv$lgpl. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt " + '{IS_MAC ? "inside the app (Photogramme.app/Contents/Resources)" : "in the installation folder"}.'
 $re = [regex]'<p className="legal">[^<]*</p>'
 if ($re.Matches($a).Count -ne 1) { Fail 'App.tsx: the license line from prepare-release.ps1 was not found.' }
 $a2 = $re.Replace($a, ('<p className="legal">' + $legalText + '</p>'), 1)
