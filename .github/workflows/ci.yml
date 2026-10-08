@@ -78,3 +78,21 @@ jobs:
                 -vf scale=w=480:h=270:flags=bilinear,scdet=threshold=100,format=rgb24 -f rawvideo - | wc -c)
           echo "decoded bytes: $n"
           test "$n" -eq $((480 * 270 * 3 * 50))
+      # Full Mac bundle (without updater signature): checks the packaging before
+      # any release and leaves a DMG to try on a real Mac (kept 7 days).
+      - name: Bundle the app (.app + DMG)
+        run: |
+          npx tauri build
+          app=src-tauri/target/release/bundle/macos/Photogramme.app
+          test -x "$app/Contents/MacOS/ffmpeg" && test -x "$app/Contents/MacOS/ffprobe"
+          "$app/Contents/MacOS/ffmpeg" -hide_banner -hwaccels | grep -q videotoolbox
+          grep -q "(macOS)" "$app/Contents/Resources/THIRD_PARTY_NOTICES.txt" || { echo "Wrong THIRD_PARTY_NOTICES.txt in the app."; exit 1; }
+          codesign --verify --deep --strict "$app"
+          codesign -dv "$app" 2>&1 | grep -E 'Signature|Identifier'
+          ls -l src-tauri/target/release/bundle/dmg/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Photogramme-macos-test
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 7
+          if-no-files-found: error
