@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { api, errorMessage } from "./api";
+import { FILE_MANAGER, GPU_NAME } from "./platform";
 import { formatBytes } from "./timecode";
 import { TOKEN_HELP } from "./compose";
 import {
@@ -171,7 +172,7 @@ export function SettingsPanel(props: Props) {
               <span className="dir-path">{s.outputDir ? `\u200E${s.outputDir}\u200E` : "Choose a folder…"}</span>
             </button>
             {s.outputDir && (
-              <button type="button" className="btn-small dir-open" onClick={onOpenDir} title="Open this folder in Explorer">Open</button>
+              <button type="button" className="btn-small dir-open" onClick={onOpenDir} title={`Open this folder in ${FILE_MANAGER}`}>Open</button>
             )}
           </div>
         </div>
@@ -217,9 +218,9 @@ export function SettingsPanel(props: Props) {
           hint="Ignores flashes and very fast cuts." />
         <PickField pick={s.shots.pick} onChange={(pick) => onChange({ ...s, shots: { ...s.shots, pick } })} />
         <Choice label="ANALYSIS DECODER" value={s.shots.decoder}
-          options={[["auto", "Auto"], ["gpu", "GPU (NVDEC)"], ["cpu", "CPU"]]}
+          options={[["auto", "Auto"], ["gpu", `GPU (${GPU_NAME})`], ["cpu", "CPU"]]}
           onChange={(decoder) => onChange({ ...s, shots: { ...s.shots, decoder } })} />
-        <p className="hint">Auto uses the RTX 3080 when the file allows it and falls back to the CPU on failure.</p>
+        <p className="hint">Auto uses the GPU ({GPU_NAME}) when the file allows it and falls back to the CPU on failure.</p>
       </Section>
 
       <Section title="PALETTE">

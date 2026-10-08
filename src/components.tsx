@@ -2,6 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as RPointerEvent, ReactNode, RefObject } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { api, nearThumbUrl } from "./api";
+import { FILE_MANAGER, GPU_NAME, shortcut } from "./platform";
 import { useFitBox, useWidth } from "./hooks";
 import { drawScope, scopeAspect } from "./scopes";
 import { formatBytes, formatFps, frameToTc, tcOf } from "./timecode";
@@ -32,8 +33,8 @@ export function TopBar({ info, onOpen, theme, onTheme }: {
           <span title="Start timecode">TC {tcOf(info, 0)}</span>
           <span>Duration {frameToTc(info.frameCount, info.fps)}</span>
           <span className={info.nvdecCompatible ? "meta-gpu" : "meta-cpu"}
-            title={info.nvdecCompatible ? "Decodable by an NVIDIA GPU (NVDEC)" : "CPU decoding"}>
-            {info.nvdecCompatible ? "NVDEC" : "CPU decoding"}
+            title={info.nvdecCompatible ? `Decodable by the GPU (${GPU_NAME})` : "CPU decoding"}>
+            {info.nvdecCompatible ? GPU_NAME : "CPU decoding"}
           </span>
         </div>
       )}
@@ -87,7 +88,7 @@ export function TabBar({ tabs, switching, onSelect, onClose, onNew }: {
           );
         })}
       </div>
-      <button type="button" className="filmtab-new" onClick={onNew} aria-label="Open a film in a new tab" title="Open a film (Ctrl+O)">+</button>
+      <button type="button" className="filmtab-new" onClick={onNew} aria-label="Open a film in a new tab" title={`Open a film (${shortcut("O")})`}>+</button>
     </nav>
   );
 }
@@ -551,7 +552,7 @@ export function CapturesPanel({ captures, onSeek, onReveal, onSavePalette, onSet
               </button>
               <figcaption>
                 <span>{c.shot != null ? `#${c.shot} · ` : ""}{c.timecode}</span>
-                <button className="btn-mini" aria-label={`Show ${c.fileName} in Explorer`} onClick={() => onReveal(c.path)}>
+                <button className="btn-mini" aria-label={`Show ${c.fileName} in ${FILE_MANAGER}`} onClick={() => onReveal(c.path)}>
                   <IconReveal size={14} />
                 </button>
               </figcaption>

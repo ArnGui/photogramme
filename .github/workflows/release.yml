@@ -1,5 +1,8 @@
 # Builds, signs (updater) and drafts a GitHub release when a tag vX.Y.Z is pushed
 # (scripts/release.ps1 does that). Publishing the draft stays a manual step.
+#
+# Three jobs: Windows installer, macOS app (Apple Silicon), then one job that
+# gathers both, writes a single latest.json for the updater and drafts the release.
 name: Release
 
 on:
@@ -71,45 +74,164 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npx tauri build --config src-tauri/tauri.release.json
 
-      - name: Draft release (installer, signature, latest.json, FFmpeg source)
+      - name: Keep the installer for the release job
         shell: pwsh
+        run: |
+          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          if (-not $exe) { throw "No NSIS installer was built." }
+          if (-not (Test-Path "$($exe.FullName).sig")) { throw "No updater signature (.sig) next to the installer." }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $exe.FullName, "$($exe.FullName).sig" out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Version matches the tag
+        run: |
+          v=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          test "v$v" = "${{ github.ref_name }}" || { echo "tauri.conf.json says $v but the tag is ${{ github.ref_name }}."; exit 1; }
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/photogramme-ffmpeg
+          key: ffmpeg-macos-${{ hashFiles('scripts/ffmpeg.lock', 'scripts/build-ffmpeg-macos.sh') }}
+
+      - name: FFmpeg (pinned commit, LGPL build for macOS)
+        run: bash scripts/build-ffmpeg-macos.sh
+
+      - run: npm ci
+
+      # Homebrew's FFmpeg encodes the test videos (libx264); the app ships its own.
+      - name: Tests (core, interface)
+        run: |
+          brew install ffmpeg
+          cargo test --manifest-path src-tauri/core/Cargo.toml
+          npm test
+
+      - name: Build and sign the app (updater signature; ad-hoc code signature)
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --config src-tauri/tauri.release.json
+
+      - name: Check the bundle, keep it for the release job
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          app=src-tauri/target/release/bundle/macos/Photogramme.app
+          dmg=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n 1)
+          test -n "$dmg" || { echo "No DMG was built."; exit 1; }
+          test -f "$app.tar.gz.sig" || { echo "No updater signature next to the app archive."; exit 1; }
+          # FFmpeg inside the app, and the macOS notices (not the Windows ones).
+          test -x "$app/Contents/MacOS/ffmpeg" && test -x "$app/Contents/MacOS/ffprobe"
+          grep -q "(macOS)" "$app/Contents/Resources/THIRD_PARTY_NOTICES.txt" || { echo "Wrong THIRD_PARTY_NOTICES.txt in the app."; exit 1; }
+          "$app/Contents/MacOS/ffmpeg" -hide_banner -hwaccels | grep -q videotoolbox
+          codesign --verify --deep --strict "$app"
+          mkdir out
+          cp "$dmg" out/
+          cp "$app.tar.gz" "out/Photogramme_${ver}_aarch64.app.tar.gz"
+          cp "$app.tar.gz.sig" "out/Photogramme_${ver}_aarch64.app.tar.gz.sig"
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: out/
+          if-no-files-found: error
+
+  release:
+    needs: [windows, macos]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-release
+
+      - name: latest.json, release notes, FFmpeg source
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 - <<'PY'
+          import glob, hashlib, json, os, datetime, pathlib
+          tag, repo = os.environ["TAG"], os.environ["REPO"]
+          ver = tag[1:]
+          def one(pattern):
+              files = glob.glob(pattern)
+              assert len(files) == 1, f"{pattern}: {files}"
+              return pathlib.Path(files[0])
+          def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
+          url = lambda p: f"https://github.com/{repo}/releases/download/{tag}/{p.name}"
+          exe = one("dist-release/windows/*-setup.exe")
+          dmg = one("dist-release/macos/*.dmg")
+          app = one("dist-release/macos/*.app.tar.gz")
+          win = {"signature": pathlib.Path(f"{exe}.sig").read_text().strip(), "url": url(exe)}
+          mac = {"signature": pathlib.Path(f"{app}.sig").read_text().strip(), "url": url(app)}
+          notes_file = pathlib.Path(f"docs/release-notes/{tag}.md")
+          notes = notes_file.read_text(encoding="utf-8").strip() if notes_file.exists() else f"Photogramme {ver}"
+          latest = {
+              "version": ver,
+              "notes": notes,
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": {
+                  "windows-x86_64-nsis": win, "windows-x86_64": win,
+                  "darwin-aarch64-app": mac, "darwin-aarch64": mac,
+              },
+          }
+          pathlib.Path("latest.json").write_text(json.dumps(latest, indent=2, ensure_ascii=False), encoding="utf-8")
+          lock = json.loads(pathlib.Path("scripts/ffmpeg.lock").read_text(encoding="utf-8-sig"))
+          body = "\n".join([
+              notes, "",
+              "## Install", "",
+              "### Windows", "",
+              f"Download **{exe.name}** below. Windows 10 or 11, 64-bit. Installed copies update themselves (Settings > About).", "",
+              "The installer is not code-signed yet, so Windows SmartScreen may warn the first time: click *More info*, then *Run anyway*.",
+              f"To check the file before running it, ``Get-FileHash .\\{exe.name}`` in PowerShell must print:", "",
+              f"``{sha(exe)}``", "",
+              "An NVIDIA card (GTX 10 series or newer) speeds up the analysis. Without one, everything runs on the processor.", "",
+              "### macOS", "",
+              f"Download **{dmg.name}** below and drag Photogramme into Applications. macOS 12 or later, Apple Silicon (M1 and newer). Installed copies update themselves (Settings > About).", "",
+              "The app is not notarized by Apple yet, so the first launch is blocked: open **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to Photogramme. Only once.",
+              f"To check the file before opening it, ``shasum -a 256 {dmg.name}`` in Terminal must print:", "",
+              f"``{sha(dmg)}``", "",
+              "The analysis is decoded by the Mac's video engine (VideoToolbox).", "",
+              "### Source", "",
+              "The FFmpeg archive attached to this release is the exact source code of the FFmpeg programs bundled in both versions (LGPL). The Mac build recipe is ``scripts/build-ffmpeg-macos.sh``.",
+          ])
+          pathlib.Path("body.md").write_text(body, encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a") as env:
+              env.write(f"FFMPEG_COMMIT={lock['commit']}\nFFMPEG_SOURCE={lock['source']}\n")
+          PY
+          src="ffmpeg-source-${FFMPEG_COMMIT:0:12}.tar.gz"
+          curl -fsSL -o "$src" "$FFMPEG_SOURCE"
+          echo "SRC=$src" >> "$GITHUB_ENV"
+
+      - name: Draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = $tag.Substring(1)
-          $repo = "${{ github.repository }}"
-          $exe = Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          if (-not $exe) { throw "No NSIS installer was built." }
-          $sigPath = "$($exe.FullName).sig"
-          if (-not (Test-Path $sigPath)) { throw "No updater signature (.sig) next to the installer." }
-          $sig = (Get-Content -Raw $sigPath).Trim()
-          $notesFile = "docs/release-notes/$tag.md"
-          $notes = if (Test-Path $notesFile) { (Get-Content -Raw $notesFile).Trim() } else { "Photogramme $ver" }
-          $url = "https://github.com/$repo/releases/download/$tag/$($exe.Name)"
-          $platform = @{ signature = $sig; url = $url }
-          $latest = [ordered]@{
-            version   = $ver
-            notes     = $notes
-            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-            platforms = [ordered]@{ "windows-x86_64-nsis" = $platform; "windows-x86_64" = $platform }
-          }
-          $latest | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8NoBOM latest.json
-
-          $lock = Get-Content -Raw scripts/ffmpeg.lock | ConvertFrom-Json
-          $src = "ffmpeg-source-$($lock.commit.Substring(0, 12)).tar.gz"
-          Invoke-WebRequest -Uri $lock.source -OutFile $src -UseBasicParsing
-
-          $sha = (Get-FileHash -Algorithm SHA256 $exe.FullName).Hash.ToLowerInvariant()
-          $lines = @(
-            $notes, "",
-            "## Install", "",
-            "Download **$($exe.Name)** below. Windows 10 or 11, 64-bit. Installed copies update themselves (Settings > About).", "",
-            "The installer is not code-signed yet, so Windows SmartScreen may warn the first time: click *More info*, then *Run anyway*.",
-            "To check the file before running it, ``Get-FileHash .\$($exe.Name)`` in PowerShell must print:", "",
-            "``$sha``", "",
-            "An NVIDIA card (GTX 10 series or newer) speeds up the analysis. Without one, everything runs on the processor.", "",
-            "The FFmpeg archive attached to this release is the exact source code of the ``ffmpeg.exe`` and ``ffprobe.exe`` bundled in the installer (LGPL)."
-          )
-          $lines -join "`n" | Set-Content -Encoding utf8NoBOM body.md
-          gh release create $tag --draft --title "Photogramme $ver" --notes-file body.md $exe.FullName $sigPath latest.json $src
+          tag="${{ github.ref_name }}"
+          gh release create "$tag" --draft --title "Photogramme ${tag#v}" --notes-file body.md \
+            dist-release/windows/* dist-release/macos/* latest.json "$SRC"

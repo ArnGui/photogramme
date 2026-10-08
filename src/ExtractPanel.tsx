@@ -5,6 +5,7 @@
 import { memo, useEffect, useRef, useState } from "react";
 import { thumbUrl } from "./api";
 import { NumberField } from "./fields";
+import { GPU_NAME } from "./platform";
 import { PickField } from "./SettingsPanel";
 import type { DisplayShot } from "./shotlist";
 import { frameToTc, tcOf } from "./timecode";
@@ -21,7 +22,7 @@ export interface JobState {
 export type Output = "stills" | "sheet";
 
 function phaseLabel(phase: string) {
-  if (phase === "analysis-gpu") return "Analyzing · GPU (NVDEC)";
+  if (phase === "analysis-gpu") return `Analyzing · GPU (${GPU_NAME})`;
   if (phase === "analysis-cpu") return "Analyzing · CPU";
   if (phase === "sheet") return "Laying out the contact sheet";
   return "Exporting";
@@ -191,7 +192,7 @@ export function ExtractPanel(props: {
             <div className="analyze-cta">
               <p className="muted small">
                 One pass over the whole film detects the cuts (FFmpeg <span className="mono">scdet</span>), builds the thumbnails and
-                the color barcode. {info.nvdecCompatible ? "Decoded by the GPU (NVDEC) when available." : "This file will be decoded on the CPU."}
+                the color barcode. {info.nvdecCompatible ? `Decoded by the GPU (${GPU_NAME}) when available.` : "This file will be decoded on the CPU."}
               </p>
               <button type="button" className="btn-primary" disabled={busy} onClick={props.onAnalyze}>ANALYZE THE FILM</button>
             </div>
@@ -200,7 +201,7 @@ export function ExtractPanel(props: {
           {analysis && (
             <p className="small muted analysis-line">
               {source === "detect" ? `${shots.length} shots · ` : ""}{analysis.seconds > 0
-                ? `${analysis.decoder === "gpu" ? "NVDEC" : "CPU"} · ${analysis.seconds.toFixed(1)} s · ${(analysis.frames / analysis.seconds).toFixed(0)} fps`
+                ? `${analysis.decoder === "gpu" ? GPU_NAME : "CPU"} · ${analysis.seconds.toFixed(1)} s · ${(analysis.frames / analysis.seconds).toFixed(0)} fps`
                 : "analysis from the saved project"}
               <button type="button" className="btn-link" disabled={busy} onClick={props.onAnalyze}>Re-analyze</button>
             </p>

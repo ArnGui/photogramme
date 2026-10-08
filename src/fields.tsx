@@ -4,6 +4,7 @@
 import { useEffect, useId, useState } from "react";
 import type { ReactNode } from "react";
 import type { Anchor } from "./types";
+import { SYSTEM_FONTS } from "./platform";
 
 export function Section({ title, children, defaultOpen = false }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
   return (
@@ -131,13 +132,8 @@ export function AnchorPicker({ value, onChange }: { value: Anchor; onChange: (a:
   );
 }
 
-/** Polices proposées : celles embarquées + les plus courantes de Windows. */
-export const FONT_SUGGESTIONS = [
-  "Barlow", "Barlow Condensed", "IBM Plex Mono",
-  "Arial", "Arial Narrow", "Bahnschrift", "Calibri", "Cambria", "Candara", "Consolas", "Constantia",
-  "Corbel", "Courier New", "Franklin Gothic Medium", "Georgia", "Impact", "Segoe UI", "Segoe UI Light",
-  "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana",
-];
+/** Polices proposées : celles embarquées + les plus courantes du système (Windows ou macOS). */
+export const FONT_SUGGESTIONS = ["Barlow", "Barlow Condensed", "IBM Plex Mono", ...SYSTEM_FONTS];
 
 export function FontDatalist() {
   return (

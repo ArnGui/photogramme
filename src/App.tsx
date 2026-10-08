@@ -9,6 +9,7 @@ import { buildShots, cutAt, mergeWithNext, selectedSpans, shotAt } from "./shotl
 import { drawPage, expandTitle, sheetLayout } from "./sheet";
 import type { SheetCell, SheetLayout } from "./sheet";
 import { checkSync } from "./sync";
+import { hasCommandKey, IS_MAC } from "./platform";
 import { formatFps } from "./timecode";
 import {
   BarcodeStrip, CapturesPanel, EmptyState, rangeOf, ScopesPanel, TabBar, Timeline, Toast, TopBar, Transport, UpdateBanner,
@@ -810,7 +811,8 @@ export default function App() {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-      if (e.ctrlKey && e.key.toLowerCase() === "o") {
+      // ⌘ sur Mac, Ctrl sous Windows.
+      if (hasCommandKey(e) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         void newTab();
         return;
@@ -818,13 +820,14 @@ export default function App() {
       if (!info) return;
       const sec = Math.round(info.fps);
       const k = e.key.toLowerCase();
-      if (e.altKey && k === "x") {
+      // Sur Mac, Option+X donne « ≈ » dans e.key : on teste aussi la touche physique.
+      if (e.altKey && (k === "x" || e.code === "KeyX")) {
         e.preventDefault();
         setMarks({ start: null, end: null });
         return;
       }
       if (e.ctrlKey || e.metaKey || e.altKey) {
-        if (e.ctrlKey && k === "b") {
+        if (hasCommandKey(e) && k === "b") {
           e.preventDefault();
           cutHere();
         }
@@ -987,7 +990,7 @@ export default function App() {
             )}
           </div>
         {tab === "settings" && (
-            <p className="legal">Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv3. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt in the installation folder.</p>
+            <p className="legal">Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv3. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt {IS_MAC ? "inside the app (Photogramme.app/Contents/Resources)" : "in the installation folder"}.</p>
           )}
         </aside>
       </div>

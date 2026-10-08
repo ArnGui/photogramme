@@ -7,9 +7,9 @@
 #  2. Sets the version everywhere (package.json, tauri.conf.json, Cargo.toml x2, Cargo.lock).
 #  3. Runs every test (skip with -SkipTests).
 #  4. Writes docs\release-notes\vX.Y.Z.md, commits, tags vX.Y.Z and pushes.
-#  5. GitHub Actions builds the installer on Windows, signs it for the updater
-#     and prepares a DRAFT release (installer, signature, latest.json, FFmpeg
-#     source). The script follows the build.
+#  5. GitHub Actions builds the Windows installer and the macOS app, signs
+#     both for the updater and prepares a DRAFT release (installer, DMG,
+#     signatures, latest.json, FFmpeg source). The script follows the build.
 #  6. You type PUBLISH: the release goes public and every installed copy
 #     offers the update at its next start.
 #

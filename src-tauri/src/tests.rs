@@ -150,7 +150,7 @@ fn plan_des_decodeurs() {
     .unwrap();
     let (order, note) = decoder_plan(DecoderPref::Auto, &info);
     assert_eq!(order, vec![Decoder::Cpu]);
-    assert!(note.unwrap().contains("NVDEC cannot decode"));
+    assert!(note.unwrap().contains(&format!("{} cannot decode", photogramme_core::GPU_DECODER)));
     info.nvdec_compatible = true;
     assert_eq!(decoder_plan(DecoderPref::Auto, &info).0, vec![Decoder::Gpu, Decoder::Cpu]);
     assert_eq!(decoder_plan(DecoderPref::Gpu, &info).0, vec![Decoder::Gpu], "GPU forcé : pas de repli silencieux");
@@ -440,3 +440,18 @@ fn annulation_d_un_export_en_lot() {
     assert_eq!(running, 0, "aucun FFmpeg orphelin");
 }
 
+
+#[test]
+fn film_passe_au_lancement() {
+    let dir = workdir("argv");
+    let film = dir.join("Mon film.MP4");
+    std::fs::write(&film, b"x").unwrap();
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let f = film.to_string_lossy().to_string();
+    assert_eq!(crate::film::startup_film(s(&["photogramme", "-psn_0_1234", &f])), Some(film.clone()));
+    // Le programme lui-même n'est jamais pris pour un film.
+    assert_eq!(crate::film::startup_film(s(&[&f])), None);
+    assert_eq!(crate::film::startup_film(s(&["photogramme", "notes.txt"])), None);
+    assert_eq!(crate::film::startup_film(s(&["photogramme", "absent.mp4"])), None, "fichier inexistant");
+    let _ = std::fs::remove_dir_all(&dir);
+}

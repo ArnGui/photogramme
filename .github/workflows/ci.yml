@@ -30,3 +30,125 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: cargo test --manifest-path src-tauri/core/Cargo.toml
+
+  # macOS (Apple Silicon): compiles the whole app, Tauri layer included, and
+  # runs every Rust test there. FFmpeg comes from Homebrew for the tests only
+  # (it has libx264 to encode the test videos); the app ships its own LGPL
+  # build, made by scripts/build-ffmpeg-macos.sh in the release workflow.
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      # Pousse les captures d'écran sur la branche ci-screenshots (pushs seulement).
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: brew install ffmpeg
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The app's Tauri context needs the built interface and the sidecar files
+      # to exist; empty stand-ins are enough to compile (tests use Homebrew's FFmpeg).
+      - name: Interface build and sidecar stand-ins
+        run: |
+          npm run build
+          for t in ffmpeg ffprobe; do touch "src-tauri/binaries/$t-aarch64-apple-darwin"; chmod +x "src-tauri/binaries/$t-aarch64-apple-darwin"; done
+          cp THIRD_PARTY_NOTICES.txt src-tauri/binaries/THIRD_PARTY_NOTICES-macos.txt
+      - name: Rust tests (core + Tauri layer)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --workspace
+      # The FFmpeg the Mac app ships: built from the pinned commit (cached),
+      # checked by the script, then decoded through VideoToolbox once.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/photogramme-ffmpeg
+          key: ffmpeg-macos-${{ hashFiles('scripts/ffmpeg.lock', 'scripts/build-ffmpeg-macos.sh') }}
+      - name: Bundled FFmpeg (LGPL build for macOS)
+        run: bash scripts/build-ffmpeg-macos.sh
+      - name: Bundled FFmpeg decodes H.264 with VideoToolbox
+        run: |
+          bin=src-tauri/binaries
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=s=1280x720:r=25:d=2 -pix_fmt yuv420p -c:v libx264 "$RUNNER_TEMP/t.mp4"
+          "$bin/ffprobe-aarch64-apple-darwin" -v error -show_entries stream=codec_name,pix_fmt -of csv=p=0 "$RUNNER_TEMP/t.mp4"
+          n=$("$bin/ffmpeg-aarch64-apple-darwin" -hide_banner -nostdin -hwaccel videotoolbox -i "$RUNNER_TEMP/t.mp4" \
+                -vf scale=w=480:h=270:flags=bilinear,scdet=threshold=100,format=rgb24 -f rawvideo - | wc -c)
+          echo "decoded bytes: $n"
+          test "$n" -eq $((480 * 270 * 3 * 50))
+      # Full Mac bundle (without updater signature): checks the packaging before
+      # any release and leaves a DMG to try on a real Mac (kept 7 days).
+      - name: Bundle the app (.app + DMG)
+        run: |
+          npx tauri build
+          app=src-tauri/target/release/bundle/macos/Photogramme.app
+          test -x "$app/Contents/MacOS/ffmpeg" && test -x "$app/Contents/MacOS/ffprobe"
+          "$app/Contents/MacOS/ffmpeg" -hide_banner -hwaccels | grep -q videotoolbox
+          grep -q "(macOS)" "$app/Contents/Resources/THIRD_PARTY_NOTICES.txt" || { echo "Wrong THIRD_PARTY_NOTICES.txt in the app."; exit 1; }
+          codesign --verify --deep --strict "$app"
+          codesign -dv "$app" 2>&1 | grep -E 'Signature|Identifier'
+          ls -l src-tauri/target/release/bundle/dmg/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Photogramme-macos-test
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          retention-days: 7
+          if-no-files-found: error
+
+      # Real launch on the runner's screen: the app opens a test film passed on
+      # the command line, then screenshots at each step. Clicks and keys go
+      # through System Events and are best effort (they need accessibility rights).
+      - name: Launch the app and take screenshots
+        run: |
+          app="$PWD/src-tauri/target/release/bundle/macos/Photogramme.app"
+          shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
+          film="$RUNNER_TEMP/Test film.mp4"
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "testsrc2=s=1920x1080:r=24:d=4" \
+            -f lavfi -i "smptehdbars=s=1920x1080:r=24:d=4" \
+            -f lavfi -i "gradients=s=1920x1080:r=24:d=4" \
+            -filter_complex "[0:v][1:v][2:v]concat=n=3:v=1,format=yuv420p" -c:v libx264 -crf 18 "$film"
+          system_profiler SPDisplaysDataType | grep -E 'Resolution|Chipset|Metal' || true
+          open -n "$app" --stdout "$RUNNER_TEMP/app.log" --stderr "$RUNNER_TEMP/app.log" --args "$film"
+          sleep 25
+          screencapture -x "$shots/1-film-opened.png"
+          se() { perl -e 'alarm shift; exec @ARGV' 20 osascript -e "tell application \"System Events\" to tell process \"Photogramme\" to $1" || echo "System Events: $1 refused"; }
+          se 'set frontmost to true'
+          for i in $(seq 1 30); do se 'key code 124' >/dev/null; done
+          sleep 2
+          screencapture -x "$shots/2-thirty-frames-later.png"
+          # ⌘O : le sélecteur natif doit s'ouvrir (puis Échap).
+          se 'keystroke "o" using command down'
+          sleep 3
+          screencapture -x "$shots/3-command-o.png"
+          se 'key code 53'
+          sleep 2
+          # « ANALYZE THE FILM » : position fixe sur l'écran 1024×768 du runner.
+          se 'click at {800, 494}'
+          sleep 25
+          screencapture -x "$shots/4-after-analysis.png"
+          pgrep -f "Photogramme.app/Contents/MacOS" >/dev/null && echo "App still running: OK" || { echo "The app quit or crashed."; cat "$RUNNER_TEMP/app.log"; exit 1; }
+          pkill -f "Photogramme.app/Contents/MacOS" || true
+          echo "--- app log"; cat "$RUNNER_TEMP/app.log" || true
+          cp "$RUNNER_TEMP/app.log" "$shots/app.log" || true
+          ls -l "$shots"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Photogramme-macos-screenshots
+          path: ${{ runner.temp }}/shots
+          retention-days: 7
+      - name: Publish the screenshots on the ci-screenshots branch
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$RUNNER_TEMP/shots"
+          git init -q -b ci-screenshots
+          git add .
+          git -c user.name="Photogramme CI" -c user.email="ci@users.noreply.github.com" commit -qm "macOS screenshots of ${GITHUB_SHA::7} (${GITHUB_REF_NAME})"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-screenshots
