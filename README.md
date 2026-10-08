@@ -68,6 +68,14 @@ Built out of pure laziness. Then it got a bit out of hand.
 
 Windows 10 or 11, 64-bit. H.264 video (MP4, MOV, MKV). An NVIDIA card is optional.
 
+### macOS
+
+1. Download `Photogramme_x.y.z_aarch64.dmg` from the [latest release](https://github.com/ArnGui/photogramme/releases/latest), open it and drag Photogramme into Applications.
+2. The first launch is blocked because the app is not notarized by Apple (that takes a paid developer account). Open **System Settings > Privacy & Security**, scroll down, click **Open Anyway** next to Photogramme. Only once.
+3. Updates are offered inside the app, as on Windows.
+
+macOS 12 or later, Apple Silicon (M1 and newer). Intel Macs are not supported for now.
+
 ---
 
 ## Full description
@@ -124,6 +132,8 @@ The analysis pass (cut detection, thumbnails, barcode) can be decoded by NVDEC, 
 
 Any GeForce from the GTX 10 series onward will do (GTX 16, RTX 20, 30, 40, 50), and most GTX 900 cards too. Keep the driver up to date. With an AMD or Intel card, or no dedicated card, decoding runs on the processor. In *Auto* mode, Photogramme tries the GPU first and switches to the processor on its own when the card or the file doesn't allow it (some 10-bit or 4:2:2 H.264 files), and says so.
 
+On a Mac, the analysis is decoded by VideoToolbox, the video engine built into Apple Silicon, under the same rule: H.264 in 8-bit 4:2:0, HEVC in 8 or 10 bits; anything else goes to the processor.
+
 ### Privacy and updates
 
 Photogramme works offline. Your films never leave your computer. The only network request is the update check at startup, which asks GitHub whether a newer version exists. Nothing else is sent, and the check can be turned off in *Settings › About*. Updates are signed: the app refuses any file that doesn't carry the project's signature.
@@ -164,7 +174,19 @@ npm run tauri dev
 
 `setup-ffmpeg.ps1` downloads the pinned LGPL build of FFmpeg into `src-tauri/binaries` and checks its SHA-256 against `scripts/ffmpeg.lock`. These binaries are not stored in the repository. `npm run tauri build` produces the installer, and `scripts\run-tests.ps1` runs the tests against the real FFmpeg.
 
-Releases are built by GitHub Actions: `scripts\release.ps1 -Version x.y.z -Notes "..."` sets the version, runs the tests, tags and pushes, follows the Windows build (installer, updater signature, `latest.json`, FFmpeg source) and publishes the draft when you confirm. One-time setup: `scripts\setup-updater.ps1` (update signing key) and `scripts\mirror-ffmpeg.ps1` (pins FFmpeg).
+On a Mac (Apple Silicon), you need the Xcode command line tools (`xcode-select --install`), Rust and Node.js 22:
+
+```bash
+git clone https://github.com/ArnGui/photogramme.git
+cd photogramme
+npm install
+bash scripts/build-ffmpeg-macos.sh
+npm run tauri dev
+```
+
+`build-ffmpeg-macos.sh` compiles FFmpeg from the commit pinned in `scripts/ffmpeg.lock`, LGPL only and without any external library (5 to 10 minutes the first time, cached afterwards), checks the result and writes the macOS notices. `npm run tauri build` produces `Photogramme.app` and a DMG.
+
+Releases are built by GitHub Actions: `scripts\release.ps1 -Version x.y.z -Notes "..."` sets the version, runs the tests, tags and pushes, follows the build (Windows installer, macOS app, updater signatures, `latest.json`, FFmpeg source) and publishes the draft when you confirm. One-time setup: `scripts\setup-updater.ps1` (update signing key) and `scripts\mirror-ffmpeg.ps1` (pins FFmpeg).
 
 The interface is written in React and TypeScript, everything else in Rust, on top of Tauri 2. The video logic lives in its own crate, `src-tauri/core`, which does not depend on Tauri. Design choices and the reasons behind them are logged in [`docs/DECISIONS.md`](docs/DECISIONS.md).
 
@@ -178,7 +200,7 @@ Bug reports and ideas are welcome in the [issues](https://github.com/ArnGui/phot
 
 Photogramme is free software, released under the GNU General Public License v3.0 or later. See [LICENSE](LICENSE). Copyright (c) 2026 Arnaud Guillard.
 
-It ships FFmpeg (`ffmpeg.exe` and `ffprobe.exe`), run as separate programs, under the LGPL v3. The exact version, the build options and a link to the matching source code are listed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). The licenses of the Rust and JavaScript libraries compiled into the app are in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt). All three files are also installed with the application. FFmpeg is a trademark of Fabrice Bellard. This software is based in part on the work of the Independent JPEG Group.
+It ships FFmpeg (`ffmpeg` and `ffprobe`), run as separate programs, under the LGPL v3. The exact version, the build options and a link to the matching source code are listed in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt). The licenses of the Rust and JavaScript libraries compiled into the app are in [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt). All three files are also installed with the application. FFmpeg is a trademark of Fabrice Bellard. This software is based in part on the work of the Independent JPEG Group.
 
 ## Author
 

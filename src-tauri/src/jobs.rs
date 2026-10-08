@@ -78,7 +78,12 @@ pub fn decoder_plan(pref: DecoderPref, info: &VideoInfo) -> (Vec<Decoder>, Optio
         DecoderPref::Auto if info.nvdec_compatible => (vec![Decoder::Gpu, Decoder::Cpu], None),
         DecoderPref::Auto => (
             vec![Decoder::Cpu],
-            Some(format!("{} {}: NVDEC cannot decode this file, analysis ran on the CPU.", info.codec, info.pix_fmt)),
+            Some(format!(
+                "{} {}: {} cannot decode this file, analysis ran on the CPU.",
+                info.codec,
+                info.pix_fmt,
+                photogramme_core::GPU_DECODER
+            )),
         ),
     }
 }

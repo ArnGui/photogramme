@@ -30,3 +30,51 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: cargo test --manifest-path src-tauri/core/Cargo.toml
+
+  # macOS (Apple Silicon): compiles the whole app, Tauri layer included, and
+  # runs every Rust test there. FFmpeg comes from Homebrew for the tests only
+  # (it has libx264 to encode the test videos); the app ships its own LGPL
+  # build, made by scripts/build-ffmpeg-macos.sh in the release workflow.
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: brew install ffmpeg
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # The app's Tauri context needs the built interface and the sidecar files
+      # to exist; empty stand-ins are enough to compile (tests use Homebrew's FFmpeg).
+      - name: Interface build and sidecar stand-ins
+        run: |
+          npm run build
+          for t in ffmpeg ffprobe; do touch "src-tauri/binaries/$t-aarch64-apple-darwin"; chmod +x "src-tauri/binaries/$t-aarch64-apple-darwin"; done
+          cp THIRD_PARTY_NOTICES.txt src-tauri/binaries/THIRD_PARTY_NOTICES-macos.txt
+      - name: Rust tests (core + Tauri layer)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --workspace
+      # The FFmpeg the Mac app ships: built from the pinned commit (cached),
+      # checked by the script, then decoded through VideoToolbox once.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/photogramme-ffmpeg
+          key: ffmpeg-macos-${{ hashFiles('scripts/ffmpeg.lock', 'scripts/build-ffmpeg-macos.sh') }}
+      - name: Bundled FFmpeg (LGPL build for macOS)
+        run: bash scripts/build-ffmpeg-macos.sh
+      - name: Bundled FFmpeg decodes H.264 with VideoToolbox
+        run: |
+          bin=src-tauri/binaries
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc2=s=1280x720:r=25:d=2 -pix_fmt yuv420p -c:v libx264 "$RUNNER_TEMP/t.mp4"
+          "$bin/ffprobe-aarch64-apple-darwin" -v error -show_entries stream=codec_name,pix_fmt -of csv=p=0 "$RUNNER_TEMP/t.mp4"
+          n=$("$bin/ffmpeg-aarch64-apple-darwin" -hide_banner -nostdin -hwaccel videotoolbox -i "$RUNNER_TEMP/t.mp4" \
+                -vf scale=w=480:h=270:flags=bilinear,scdet=threshold=100,format=rgb24 -f rawvideo - | wc -c)
+          echo "decoded bytes: $n"
+          test "$n" -eq $((480 * 270 * 3 * 50))

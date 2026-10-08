@@ -3,7 +3,8 @@
 //! - précision à l'image près de la capture et de l'export groupé ;
 //! - passe d'analyse complète (scdet + vignettes + colonnes) sur une vidéo
 //!   dont on connaît les coupes ;
-//! - reconnaissance d'un échec GPU (sur une machine sans carte NVIDIA) ;
+//! - reconnaissance d'un échec GPU (sur une machine sans carte NVIDIA ;
+//!   sur Mac, VideoToolbox se rabat seul sur le processeur et réussit) ;
 //! - fichiers difficiles : pixels non carrés, rotation, timecode de départ,
 //!   début décalé (start_time ≠ 0), import d'une EDL sur un vrai film.
 //!
@@ -267,10 +268,10 @@ fn echec_gpu_reconnu_pour_le_repli() {
     let info = probe(&ffprobe, &ramp(&ffmpeg, &dir));
     let (ok, a) = run_analysis(&ffmpeg, &info, Decoder::Gpu);
     if ok {
-        // Machine avec une carte NVIDIA : l'analyse GPU doit être complète.
+        // GPU utilisable (carte NVIDIA, ou Mac) : l'analyse GPU doit être complète.
         let r = a.finish();
         assert_eq!(r.frames, info.frame_count);
-        eprintln!("GPU disponible : analyse NVDEC vérifiée ({} images)", r.frames);
+        eprintln!("GPU disponible : analyse {} vérifiée ({} images)", photogramme_core::GPU_DECODER, r.frames);
     } else {
         let err = a.error_text();
         eprintln!("Sans GPU, message FFmpeg : {err}");

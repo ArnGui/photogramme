@@ -62,7 +62,9 @@ pub struct VideoInfo {
     pub timecode: Timecode,
     /// Timecode tel qu'écrit dans le fichier (sert à caler un EDL).
     pub file_timecode: Timecode,
-    /// Décodable par le NVDEC d'une carte RTX 30 (Ampere).
+    /// Décodable par le décodeur vidéo du GPU : NVDEC d'une carte RTX 30
+    /// (Ampere) sous Windows, VideoToolbox d'un Mac Apple Silicon (même règle).
+    /// Nom historique gardé : il est enregistré dans les projets en cache.
     pub nvdec_compatible: bool,
     /// Avertissements lisibles, affichés dans l'interface.
     pub warnings: Vec<String>,
@@ -160,6 +162,9 @@ fn even(x: f64) -> u32 {
 /// Le NVDEC des RTX 30 décode le H.264 en 8 bits 4:2:0 uniquement,
 /// et le HEVC en 4:2:0 8/10 bits (pas de 4:2:2).
 /// Source : NVIDIA Video Encode and Decode GPU Support Matrix.
+///
+/// La même règle vaut pour VideoToolbox sur Apple Silicon : H.264 seulement en
+/// 8 bits 4:2:0, HEVC en 8 et 10 bits 4:2:0.
 pub fn nvdec_ampere_compatible(codec: &str, pix_fmt: &str) -> bool {
     match codec {
         "h264" => matches!(pix_fmt, "yuv420p" | "yuvj420p" | "nv12"),
@@ -321,7 +326,8 @@ pub fn parse_probe(json: &str, path: &str) -> Result<VideoInfo, String> {
     let nvdec_compatible = nvdec_ampere_compatible(&codec, &pix_fmt);
     if codec == "h264" && !nvdec_compatible {
         warnings.push(format!(
-            "H.264 in {pix_fmt}: an RTX 30 NVDEC cannot decode it, analysis will run on the CPU."
+            "H.264 in {pix_fmt}: the GPU decoder ({}) cannot decode it, analysis will run on the CPU.",
+            crate::analysis::GPU_DECODER
         ));
     }
 
@@ -504,7 +510,7 @@ pub(crate) mod tests {
         let json = SAMPLE.replace("yuv420p", "yuv420p10le");
         let i = parse_probe(&json, "a.mp4").unwrap();
         assert!(!i.nvdec_compatible);
-        assert!(i.warnings.iter().any(|w| w.contains("NVDEC")));
+        assert!(i.warnings.iter().any(|w| w.contains(crate::analysis::GPU_DECODER)));
     }
 
     #[test]

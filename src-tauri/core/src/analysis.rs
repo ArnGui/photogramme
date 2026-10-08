@@ -1,11 +1,18 @@
 //! Passe d'analyse du film entier, en un seul décodage :
 //! scores de changement de plan (`scdet`), vignettes et colonnes du code-barre.
 //!
-//! Chaîne GPU (RTX 3080) :
+//! Chaîne GPU sous Windows (RTX 3080) :
 //!   NVDEC → `scale_cuda` (réduction à 480 px sur le GPU) → `hwdownload`
 //!   → `scdet` → `metadata` (scores sur stderr) → vignette RVB 160 px sur stdout.
 //! Le GPU fait le gros du travail (décodage + réduction) ; le processeur ne
 //! voit plus que des images de 480 px.
+//!
+//! Chaîne GPU sous macOS : VideoToolbox décode, FFmpeg rapatrie l'image en
+//! mémoire centrale tout seul (pas de `-hwaccel_output_format`), puis la même
+//! réduction que sur processeur. Sur Apple Silicon la mémoire est unifiée :
+//! ce rapatriement est une copie en mémoire, pas un transfert PCIe. Choix de
+//! robustesse : `scale_vt` garderait la réduction sur le GPU, à mesurer sur
+//! une vraie machine avant de l'adopter (voir docs/DECISIONS.md).
 //!
 //! Pourquoi lire le score de CHAQUE image plutôt que laisser `scdet` trancher ?
 //! Parce que le seuil devient alors réglable en direct, sans relancer
@@ -31,11 +38,36 @@ const MAX_PENDING: usize = 600;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Decoder {
-    /// NVDEC + scale_cuda.
+    /// Décodeur vidéo du GPU : NVDEC + scale_cuda (Windows), VideoToolbox (macOS).
     Gpu,
     /// Décodage et réduction par le processeur.
     Cpu,
 }
+
+/// Interface de décodage GPU utilisée par FFmpeg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuApi {
+    /// NVIDIA : NVDEC, réduction `scale_cuda` sur le GPU.
+    Cuda,
+    /// Apple : VideoToolbox, réduction sur le processeur.
+    VideoToolbox,
+}
+
+impl GpuApi {
+    /// Celle de la plateforme compilée.
+    pub const CURRENT: GpuApi = if cfg!(target_os = "macos") { GpuApi::VideoToolbox } else { GpuApi::Cuda };
+
+    /// Nom affiché dans les messages.
+    pub const fn name(self) -> &'static str {
+        match self {
+            GpuApi::Cuda => "NVDEC",
+            GpuApi::VideoToolbox => "VideoToolbox",
+        }
+    }
+}
+
+/// Nom du décodeur GPU de la plateforme (« NVDEC », « VideoToolbox »).
+pub const GPU_DECODER: &str = GpuApi::CURRENT.name();
 
 /// Dimensions utilisées pendant l'analyse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -92,16 +124,27 @@ fn stream_dims(info: &VideoInfo, w: u32, h: u32) -> (u32, u32) {
     if info.quarter_turn() { (h, w) } else { (w, h) }
 }
 
-/// Arguments FFmpeg de la passe d'analyse.
+/// Arguments FFmpeg de la passe d'analyse, pour le GPU de cette plateforme.
 pub fn analysis_args(info: &VideoInfo, decoder: Decoder) -> Vec<String> {
+    analysis_args_for(info, decoder, GpuApi::CURRENT)
+}
+
+/// Idem pour une interface GPU donnée (testable sur toute plateforme).
+pub fn analysis_args_for(info: &VideoInfo, decoder: Decoder, api: GpuApi) -> Vec<String> {
     let g = geometry(info);
     let (aw, ah) = stream_dims(info, g.analysis_w, g.analysis_h);
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-nostats", "-noautorotate"]
         .iter()
         .map(|s| s.to_string())
         .collect();
-    let vf = match decoder {
-        Decoder::Gpu => {
+    let vf = match (decoder, api) {
+        (Decoder::Gpu, GpuApi::VideoToolbox) => {
+            // Sans format de sortie matériel, FFmpeg rapatrie chaque image
+            // décodée (nv12, p010 en 10 bits) : la suite est celle du processeur.
+            a.extend(["-hwaccel", "videotoolbox"].iter().map(|s| s.to_string()));
+            format!("scale=w={aw}:h={ah}:flags=bilinear,{}", tail_filters(info, &g))
+        }
+        (Decoder::Gpu, GpuApi::Cuda) => {
             // Les images restent en mémoire GPU jusqu'au `hwdownload`.
             a.extend(
                 ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
@@ -110,7 +153,7 @@ pub fn analysis_args(info: &VideoInfo, decoder: Decoder) -> Vec<String> {
             );
             format!("scale_cuda=w={aw}:h={ah},hwdownload,format=nv12,{}", tail_filters(info, &g))
         }
-        Decoder::Cpu => format!("scale=w={aw}:h={ah}:flags=bilinear,{}", tail_filters(info, &g)),
+        (Decoder::Cpu, _) => format!("scale=w={aw}:h={ah}:flags=bilinear,{}", tail_filters(info, &g)),
     };
     a.extend(["-i".into(), info.path.clone()]);
     a.extend(
@@ -128,12 +171,12 @@ pub fn analysis_args(info: &VideoInfo, decoder: Decoder) -> Vec<String> {
     a
 }
 
-/// Message d'erreur NVDEC/CUDA reconnaissable : on bascule alors sur le processeur.
+/// Message d'erreur GPU (NVDEC/CUDA, VideoToolbox) reconnaissable : on bascule alors sur le processeur.
 pub fn looks_like_gpu_failure(stderr: &str) -> bool {
     let s = stderr.to_lowercase();
     // « device » seul serait trop large (« No space left on device ») : on
     // garde les formulations des erreurs d'initialisation du GPU.
-    ["cuda", "nvdec", "cuvid", "hwaccel", "hwdownload", "scale_cuda", "nvcuda", "device creation", "no device", "device type"]
+    ["cuda", "nvdec", "cuvid", "videotoolbox", "hwaccel", "hwdownload", "scale_cuda", "nvcuda", "device creation", "no device", "device type"]
         .iter()
         .any(|k| s.contains(k))
 }
@@ -414,7 +457,7 @@ mod tests {
     #[test]
     fn arguments_gpu_et_cpu() {
         let i = info(1920, 1080, 10);
-        let gpu = analysis_args(&i, Decoder::Gpu);
+        let gpu = analysis_args_for(&i, Decoder::Gpu, GpuApi::Cuda);
         let at = |a: &[String], k: &str| a.iter().position(|x| x == k).unwrap();
         assert_eq!(gpu[at(&gpu, "-hwaccel") + 1], "cuda");
         assert!(at(&gpu, "-hwaccel") < at(&gpu, "-i"), "-hwaccel doit précéder -i");
@@ -426,8 +469,30 @@ mod tests {
         assert_eq!(gpu[at(&gpu, "-fps_mode") + 1], "passthrough");
 
         let cpu = analysis_args(&i, Decoder::Cpu);
-        assert!(!cpu.iter().any(|x| x.contains("cuda")));
+        assert!(!cpu.iter().any(|x| x.contains("cuda") || x.contains("videotoolbox")));
         assert!(cpu[at(&cpu, "-vf") + 1].starts_with("scale=w=480:h=270"));
+    }
+
+    #[test]
+    fn arguments_gpu_videotoolbox() {
+        let i = info(1920, 1080, 10);
+        let at = |a: &[String], k: &str| a.iter().position(|x| x == k).unwrap();
+        let vt = analysis_args_for(&i, Decoder::Gpu, GpuApi::VideoToolbox);
+        assert_eq!(vt[at(&vt, "-hwaccel") + 1], "videotoolbox");
+        assert!(at(&vt, "-hwaccel") < at(&vt, "-i"), "-hwaccel doit précéder -i");
+        assert!(!vt.iter().any(|x| x == "-hwaccel_output_format"), "images rapatriées par FFmpeg");
+        assert!(!vt.iter().any(|x| x.contains("cuda")));
+        // Après le décodage, filtres identiques au processeur : mêmes scores, mêmes vignettes.
+        let cpu = analysis_args_for(&i, Decoder::Cpu, GpuApi::VideoToolbox);
+        assert_eq!(vt[at(&vt, "-vf") + 1], cpu[at(&cpu, "-vf") + 1]);
+        assert!(looks_like_gpu_failure("[h264 @ 0x1] Failed setup for format videotoolbox_vld: hwaccel initialisation returned error."));
+        assert_eq!(GpuApi::VideoToolbox.name(), "VideoToolbox");
+    }
+
+    #[test]
+    fn gpu_de_la_plateforme() {
+        let attendu = if cfg!(target_os = "macos") { "VideoToolbox" } else { "NVDEC" };
+        assert_eq!(GPU_DECODER, attendu);
     }
 
     #[test]
@@ -484,7 +549,7 @@ mod tests {
         i.out_height = 1920;
         let g = geometry(&i);
         assert_eq!((g.thumb_w, g.thumb_h), (160, 284), "vignettes debout");
-        let vf = analysis_args(&i, Decoder::Gpu).into_iter().find(|x| x.starts_with("scale_cuda")).unwrap();
+        let vf = analysis_args_for(&i, Decoder::Gpu, GpuApi::Cuda).into_iter().find(|x| x.starts_with("scale_cuda")).unwrap();
         // 480 px de large dans l'orientation finale (debout) = 854×480 dans celle du flux.
         assert!(vf.starts_with("scale_cuda=w=854:h=480,"), "{vf}");
         assert!(vf.contains("scale=w=284:h=160") && vf.ends_with("transpose=cclock"), "{vf}");

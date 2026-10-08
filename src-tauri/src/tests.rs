@@ -150,7 +150,7 @@ fn plan_des_decodeurs() {
     .unwrap();
     let (order, note) = decoder_plan(DecoderPref::Auto, &info);
     assert_eq!(order, vec![Decoder::Cpu]);
-    assert!(note.unwrap().contains("NVDEC cannot decode"));
+    assert!(note.unwrap().contains(&format!("{} cannot decode", photogramme_core::GPU_DECODER)));
     info.nvdec_compatible = true;
     assert_eq!(decoder_plan(DecoderPref::Auto, &info).0, vec![Decoder::Gpu, Decoder::Cpu]);
     assert_eq!(decoder_plan(DecoderPref::Gpu, &info).0, vec![Decoder::Gpu], "GPU forcé : pas de repli silencieux");

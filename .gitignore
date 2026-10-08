@@ -21,3 +21,7 @@ src-tauri/binaries/*.dll
 
 # Files attached to GitHub releases, not versioned
 release-extras/
+
+# FFmpeg built for macOS by scripts/build-ffmpeg-macos.sh
+src-tauri/binaries/*-apple-darwin
+src-tauri/binaries/THIRD_PARTY_NOTICES-macos.txt
