@@ -10,6 +10,9 @@ import type { DisplayShot } from "./shotlist";
 import { frameToTc, tcOf } from "./timecode";
 import type { AnalysisSummary, BatchMode, FrameRange, ImportedCuts, Pick, Settings, ShotSource, VideoInfo } from "./types";
 
+/** Réglages du mode « par plan » ouverts ou repliés (confort de chaque poste). */
+const OPEN_KEY = "photogramme.extractSettingsOpen";
+
 export function PickField({ pick, onChange }: { pick: Pick; onChange: (p: Pick) => void }) {
   const count = pick.mode === "spread" ? pick.count : 3;
   return (
@@ -142,6 +145,27 @@ export function ExtractPanel(props: {
     el?.scrollIntoView({ block: "nearest" });
   }, [props.currentShot]);
 
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const saveSettingsOpen = (open: boolean) => {
+    setSettingsOpen(open);
+    try {
+      localStorage.setItem(OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* stockage indisponible : l'état vaut pour la session */
+    }
+  };
+  const pick = s.shots.pick;
+  const settingsSummary = [
+    source === "imported" ? "Edit list" : `Detection · ${s.shots.threshold} · ${s.shots.minSeconds} s`,
+    pick.mode === "spread" ? `${pick.count} per shot` : pick.mode,
+  ].join(" · ");
+
   const [showNote, setShowNote] = useState(true);
   useEffect(() => setShowNote(true), [analysis?.id, imported]);
 
@@ -162,6 +186,14 @@ export function ExtractPanel(props: {
 
       {mode === "shots" && (
         <>
+          {/* Réglages repliables : la liste des plans passe devant. Toujours ouverts tant qu'il n'y a pas de liste. */}
+          <details className="section extract-settings" open={settingsOpen || !haveList}
+            onToggle={(e) => haveList && saveSettingsOpen(e.currentTarget.open)}>
+            <summary>
+              <span className="section-title">SETTINGS</span>
+              <span className="section-summary mono">{settingsSummary}</span>
+            </summary>
+            <div className="section-body">
           <div className="field">
             <span className="label">CUTS FROM</span>
             <div className="pills" role="group" aria-label="Cuts from">
@@ -243,6 +275,13 @@ export function ExtractPanel(props: {
                   hint="Shorter shots are merged: ignores flashes and very fast cuts." />
               )}
               <PickField pick={s.shots.pick} onChange={(pick) => onChange({ ...s, shots: { ...s.shots, pick } })} />
+            </>
+          )}
+            </div>
+          </details>
+
+          {haveList && (
+            <>
               <div className="row list-tools small">
                 <span className="muted">{checked}/{shots.length} selected</span>
                 <button type="button" className="btn-link" onClick={() => props.onSetAll(true)}>All</button>

@@ -1,7 +1,14 @@
 // Onglet EXTRACT : analyse, liste des plans, liste de montage, modes, exports.
 // Et ce qui entoure : onglets de films, projet relu (dont les noms d'onglets de la v0.6).
 
+import type { Page } from "@playwright/test";
 import { boot, calls, savedSettings, waitSaved, expectToast, expect, test } from "./helpers";
+
+/** Ouvre les réglages repliables du mode « par plan ». */
+async function openSettings(page: Page) {
+  const d = page.locator("details.extract-settings");
+  if (!(await d.evaluate((el: HTMLDetailsElement) => el.open))) await d.locator("summary").click();
+}
 
 test("analyze a film: progress, toast, shot list and barcode appear", async ({ page }) => {
   const errors = await boot(page, { analysis: false });
@@ -11,6 +18,7 @@ test("analyze a film: progress, toast, shot list and barcode appear", async ({ p
   await expectToast(page, /Analysis done/);
   await expect(page.locator(".shot")).not.toHaveCount(0);
   await expect(page.getByRole("button", { name: /Film barcode/ })).toBeVisible();
+  await openSettings(page);
   await expect(page.getByText(/shots · NVDEC/)).toBeVisible();
   // La barre d'état dit ce qui a réellement servi, pas seulement ce que le fichier permet.
   await expect(page.locator(".statusbar")).toContainText("Analyzed on the GPU (NVDEC)");
@@ -21,6 +29,7 @@ test("threshold and minimum length re-list the shots without re-analyzing", asyn
   await boot(page, { analysis: true });
   const before = await page.locator(".shot").count();
   const thr = page.getByRole("textbox", { name: "Threshold" });
+  await openSettings(page);
   await thr.fill("40");
   await thr.press("Enter");
   await expect.poll(async () => (await calls(page, "list_shots")).some((c) => c.args.threshold === 40)).toBe(true);
@@ -77,6 +86,7 @@ test("clicking a shot thumbnail seeks to it and follows playback", async ({ page
 
 test("import an edit list, then remove it and go back to detection", async ({ page }) => {
   await boot(page, { analysis: true });
+  await openSettings(page);
   await page.getByRole("group", { name: "Cuts from" }).getByRole("button", { name: "Edit list" }).click();
   await expectToast(page, "6 shots imported from atelier_v7.edl");
   await expect(page.locator(".shot")).toHaveCount(6);
@@ -103,6 +113,7 @@ test("extraction modes: every X s and N frames update the plan and are saved", a
   await waitSaved(page, (s) => s.batch.mode === "spread" && s.batch.spreadCount === 30);
   // Image retenue par plan : N par plan.
   await page.getByRole("tab", { name: "By shot" }).click();
+  await openSettings(page);
   await page.getByRole("group", { name: "FRAME KEPT PER SHOT" }).getByRole("button", { name: "N per shot" }).click();
   await expect(page.getByRole("textbox", { name: "Frames per shot" })).toBeVisible();
   await waitSaved(page, (s) => s.shots.pick.mode === "spread");
@@ -234,4 +245,23 @@ test("film warnings are shown and can be hidden", async ({ page }) => {
   await expect(page.getByText("Variable frame rate")).toBeVisible();
   await page.getByRole("button", { name: "Hide" }).click();
   await expect(page.getByText("Variable frame rate")).toHaveCount(0);
+});
+
+test("shot settings fold away so the shot list comes first, and the choice is remembered", async ({ page }) => {
+  await boot(page, { analysis: true });
+  const d = page.locator("details.extract-settings");
+  // Liste présente : réglages repliés, résumé lisible, liste visible.
+  await expect(d).not.toHaveAttribute("open", "");
+  await expect(d.locator(".section-summary")).toHaveText(/Detection · 10 · 0.5 s · middle/);
+  await expect(page.locator(".shot").first()).toBeVisible();
+  await d.locator("summary").click();
+  await expect(page.getByRole("textbox", { name: "Threshold" })).toBeVisible();
+  await page.reload();
+  await expect(page.locator("details.extract-settings")).toHaveAttribute("open", "");
+});
+
+test("without a shot list the settings stay open: analyzing is one click away", async ({ page }) => {
+  await boot(page);
+  await expect(page.locator("details.extract-settings")).toHaveAttribute("open", "");
+  await expect(page.getByRole("button", { name: "Analyze the film" })).toBeVisible();
 });

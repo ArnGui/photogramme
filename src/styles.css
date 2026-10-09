@@ -610,7 +610,9 @@ textarea.text { resize: vertical; font-family: var(--f-mono); }
 .list-tools .btn-link { text-decoration: none; color: var(--text-2); padding: 2px 4px; }
 .list-tools .btn-link:hover { color: var(--text); }
 .list-tools .push { margin-left: auto; }
-.shots { list-style: none; margin: 0 -6px; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: 46vh; overflow-y: auto; }
+.shots { list-style: none; margin: 0 -6px; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: max(240px, calc(100vh - 430px)); overflow-y: auto; }
+.extract-settings { border-top: 0; border-bottom: 1px solid var(--line); }
+.extract-settings > summary { padding-top: 2px; }
 .shot {
   display: grid; grid-template-columns: 18px 84px minmax(0, 1fr) 26px; gap: 8px; align-items: center;
   padding: 4px 6px; border-radius: var(--r-small); content-visibility: auto; contain-intrinsic-size: auto 52px;
