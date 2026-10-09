@@ -31,6 +31,12 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
   const [playing, setPlaying] = useState(false);
   /** Vitesse de navette : > 0 avant, < 0 arrière, 0 arrêt (J/K/L). */
   const [shuttleSpeed, setShuttleSpeed] = useState(0);
+  /** Copie synchrone de la vitesse : les effets de bord de la navette se décident sur elle. */
+  const speedRef = useRef(0);
+  const setSpeed = useCallback((s: number) => {
+    speedRef.current = s;
+    setShuttleSpeed(s);
+  }, []);
   const frameRef = useRef(0);
   const reverseTimer = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -49,6 +55,7 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
   useEffect(() => {
     setFrame(0);
     setPlaying(false);
+    setSpeed(0);
     const v = videoRef.current as VideoWithRvfc | null;
     if (!v || !info) return;
     const fps = info.fpsNum / info.fpsDen;
@@ -91,9 +98,10 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
       v.removeEventListener("pause", onPause);
       v.removeEventListener("ended", onPause);
     };
-  }, [info, clamp, setFrame, mountKey]);
+  }, [info, clamp, setFrame, setSpeed, mountKey]);
 
-  const seek = useCallback(
+  /** Se place sur l'image `f` sans toucher à la navette (utilisé par la marche arrière elle-même). */
+  const seekTo = useCallback(
     (f: number) => {
       const v = videoRef.current;
       if (!v || !info) return;
@@ -110,31 +118,48 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
   }, []);
   useEffect(() => stopReverse, [stopReverse, info]);
 
+  /** Déplacement demandé par l'utilisateur (Début/Fin, clic sur un plan, timeline) : arrête la marche arrière. */
+  const seek = useCallback(
+    (f: number) => {
+      if (reverseTimer.current !== undefined) {
+        stopReverse();
+        setSpeed(0);
+      }
+      seekTo(f);
+    },
+    [seekTo, stopReverse, setSpeed],
+  );
+
   const step = useCallback(
     (delta: number) => {
       const v = videoRef.current;
       stopReverse();
-      setShuttleSpeed(0);
+      setSpeed(0);
       if (v && !v.paused) v.pause();
-      seek(frameRef.current + delta);
+      seekTo(frameRef.current + delta);
     },
-    [seek, stopReverse],
+    [seekTo, stopReverse, setSpeed],
   );
 
   const togglePlay = useCallback(() => {
     const v = videoRef.current;
     if (!v) return;
     stopReverse();
-    setShuttleSpeed(0);
+    setSpeed(0);
     v.playbackRate = 1;
     if (v.paused) void v.play().catch(() => setPlaying(false));
     else v.pause();
-  }, [stopReverse]);
+  }, [stopReverse, setSpeed]);
 
   /**
    * Navette J/K/L : L lit en avant (×1, ×2, ×4, ×8 à chaque appui), J en
    * arrière, K arrête. La balise <video> ne sait pas lire à l'envers : la
    * marche arrière avance par sauts d'images à la cadence du film.
+   *
+   * Les effets de bord (minuterie, lecture) se font ici, jamais dans une
+   * fonction passée à `setState` : React peut l'appeler deux fois (mode strict,
+   * rendus concurrents) et une minuterie lancée en double restait orpheline,
+   * impossible à arrêter : marche arrière bloquée.
    */
   const shuttle = useCallback(
     (dir: -1 | 0 | 1) => {
@@ -144,34 +169,39 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
       if (dir === 0) {
         v.pause();
         v.playbackRate = 1;
-        setShuttleSpeed(0);
+        setSpeed(0);
         return;
       }
-      setShuttleSpeed((cur) => {
-        const same = Math.sign(cur) === dir;
-        const next = same ? Math.min(8, Math.abs(cur) * 2) : 1;
-        if (dir > 0) {
-          v.playbackRate = next;
-          if (v.paused) void v.play().catch(() => setPlaying(false));
-        } else {
-          v.pause();
-          const fps = info.fpsNum / info.fpsDen;
-          // Au plus ~25 sauts par seconde : chaque saut avance de plusieurs images à grande vitesse.
-          const hz = Math.min(fps, 25);
-          const per = Math.max(1, Math.round((fps * next) / hz));
-          reverseTimer.current = setInterval(() => {
-            const f = frameRef.current - per;
-            seek(f);
-            if (f <= 0) {
-              stopReverse();
-              setShuttleSpeed(0);
-            }
-          }, 1000 / hz);
-        }
-        return dir * next;
-      });
+      const cur = speedRef.current;
+      const next = Math.sign(cur) === dir ? Math.min(8, Math.abs(cur) * 2) : 1;
+      if (dir > 0) {
+        v.playbackRate = next;
+        if (v.paused) void v.play().catch(() => setPlaying(false));
+      } else {
+        v.pause();
+        v.playbackRate = 1;
+        const fps = info.fpsNum / info.fpsDen;
+        // Au plus ~25 sauts par seconde : chaque saut avance de plusieurs images à grande vitesse.
+        const hz = Math.min(fps, 25);
+        const per = Math.max(1, Math.round((fps * next) / hz));
+        const id = setInterval(() => {
+          // Garde-fou : une minuterie qui n'est plus la minuterie courante s'arrête d'elle-même.
+          if (reverseTimer.current !== id) {
+            clearInterval(id);
+            return;
+          }
+          const f = frameRef.current - per;
+          seekTo(f);
+          if (f <= 0) {
+            stopReverse();
+            setSpeed(0);
+          }
+        }, 1000 / hz);
+        reverseTimer.current = id;
+      }
+      setSpeed(dir * next);
     },
-    [info, seek, stopReverse],
+    [info, seekTo, stopReverse, setSpeed],
   );
 
   return { videoRef, frame, frameRef, playing: playing || shuttleSpeed < 0, shuttleSpeed, seek, step, togglePlay, shuttle };

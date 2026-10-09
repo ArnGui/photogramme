@@ -202,3 +202,55 @@ test("stepping forward never shows the previous frame number for an instant", as
   expect(bounces).toEqual([]);
   expect(f[f.length - 1]).toBe(1);
 });
+
+// Régression v0.7 : en mode strict, J lançait deux minuteries de marche arrière ;
+// l'une restait orpheline et K, les flèches ou un clic ne l'arrêtaient plus.
+test("J / K / L shuttle: K stops reverse, and Home or a step cancels it too", async ({ page }) => {
+  const errors = await boot(page, { analysis: true });
+  await page.keyboard.press("End");
+  await expect(page.locator(".tc-big")).toHaveText("01:00:09:23");
+  await page.keyboard.press("j");
+  await expect.poll(() => tcText(page)).not.toBe("01:00:09:23");
+  await page.keyboard.press("j");
+  await expect(page.locator(".shuttle")).toHaveText("◀ ×2");
+  await page.keyboard.press("k");
+  await expect(page.locator(".shuttle")).toHaveCount(0);
+  const stopped = await tcText(page);
+  await page.waitForTimeout(400);
+  expect(await tcText(page)).toBe(stopped);
+
+  // Une nouvelle marche arrière, coupée par Début.
+  await page.keyboard.press("End");
+  await page.keyboard.press("j");
+  await expect.poll(() => tcText(page)).not.toBe("01:00:09:23");
+  await page.keyboard.press("Home");
+  await page.waitForTimeout(400);
+  await expect(page.locator(".tc-big")).toHaveText("01:00:00:00");
+
+  // Puis coupée par une flèche : l'image suivante doit tenir.
+  await page.keyboard.press("End");
+  await page.keyboard.press("j");
+  await expect.poll(() => tcText(page)).not.toBe("01:00:09:23");
+  await page.keyboard.press("ArrowRight");
+  const after = await tcText(page);
+  await page.waitForTimeout(400);
+  expect(await tcText(page)).toBe(after);
+
+  // Puis coupée par un clic sur la timeline (code-barres) : le curseur ne doit plus reculer.
+  await page.keyboard.press("End");
+  await page.keyboard.press("j");
+  await expect.poll(() => tcText(page)).not.toBe("01:00:09:23");
+  const bar = page.getByRole("button", { name: /Film barcode/ });
+  const box = (await bar.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  const clicked = await tcText(page);
+  await page.waitForTimeout(400);
+  expect(await tcText(page)).toBe(clicked);
+
+  // L puis K : lecture avant arrêtée.
+  await page.keyboard.press("l");
+  await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
+  await page.keyboard.press("k");
+  await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
