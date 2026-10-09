@@ -200,6 +200,12 @@ pub struct UiSettings {
     pub skin: Skin,
     /// Décor du skin (rayures, barres de couleur, trame) ; les couleurs restent.
     pub effects: bool,
+    /// Couleur d'accent du skin Studio (les autres skins gardent la leur).
+    /// Une valeur inconnue redonne l'or, sans rejeter le fichier.
+    #[serde(deserialize_with = "accent_or_default")]
+    pub accent: Accent,
+    /// Son de la visionneuse coupé.
+    pub muted: bool,
 }
 
 impl Default for UiSettings {
@@ -211,6 +217,8 @@ impl Default for UiSettings {
             theme: Theme::Dark,
             skin: Skin::Studio,
             effects: true,
+            accent: Accent::Gold,
+            muted: false,
         }
     }
 }
@@ -223,6 +231,22 @@ pub enum Skin {
     Studio,
     Atomic,
     Mission,
+}
+
+/// Couleur d'accent du skin Studio. L'or est celui des versions 0.5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Accent {
+    #[default]
+    Gold,
+    Coral,
+    Teal,
+    Blue,
+}
+
+fn accent_or_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Accent, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
 }
 
 fn skin_or_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Skin, D::Error> {
@@ -450,6 +474,33 @@ mod tests {
         for (txt, skin) in [("studio", Skin::Studio), ("atomic", Skin::Atomic), ("mission", Skin::Mission)] {
             std::fs::write(&p, format!(r#"{{"ui":{{"skin":"{txt}"}}}}"#)).unwrap();
             assert_eq!(load(&p).ui.skin, skin);
+        }
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    #[test]
+    fn accent_et_son_par_defaut_aller_retour_et_valeur_inconnue() {
+        // Fichier d'avant le choix d'accent : or, son actif.
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"skin":"atomic"}}"#).unwrap();
+        assert_eq!(old.ui.accent, Accent::Gold);
+        assert!(!old.ui.muted);
+        assert_eq!(old.ui.skin, Skin::Atomic);
+
+        let p = tmp("accent.json");
+        let mut s = Settings::default();
+        s.ui.accent = Accent::Coral;
+        s.ui.muted = true;
+        save(&p, &s).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains(r#""accent": "coral""#), "{text}");
+        assert_eq!(load(&p), s);
+
+        for bad in [r#""magenta""#, "3", "null", r#""Gold""#] {
+            std::fs::write(&p, format!(r#"{{"quality":77,"ui":{{"accent":{bad},"muted":true}}}}"#)).unwrap();
+            let l = load(&p);
+            assert_eq!(l.ui.accent, Accent::Gold, "{bad}");
+            assert!(l.ui.muted, "{bad}");
+            assert_eq!(l.quality, 77, "le reste du fichier doit survivre à {bad}");
         }
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }

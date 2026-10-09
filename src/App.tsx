@@ -821,10 +821,18 @@ export default function App() {
   const theme = settings?.ui.theme;
   const skin = settings?.ui.skin;
   const effects = settings?.ui.effects;
+  const accent = settings?.ui.accent ?? "gold";
   useEffect(() => {
-    if (theme && skin && effects !== undefined) applyAppearance({ theme, skin, effects });
-  }, [theme, skin, effects]);
+    if (theme && skin && effects !== undefined) applyAppearance({ theme, skin, effects, accent });
+  }, [theme, skin, effects, accent]);
   const openPrefs = useCallback((section?: PrefsSection) => setPrefs((p) => ({ open: true, section: section ?? p.section })), []);
+
+  // Son de la visionneuse : réglage mémorisé, appliqué à chaque nouvelle balise <video>.
+  const muted = settings?.ui.muted ?? false;
+  const toggleMute = useCallback(() => setUi({ muted: !muted }), [setUi, muted]);
+  useEffect(() => {
+    if (player.videoRef.current) player.videoRef.current.muted = muted;
+  }, [muted, info, cors, player.videoRef]);
 
   // Raccourcis clavier, ignorés quand on tape dans un champ.
   const { togglePlay, step, seek, shuttle } = player;
@@ -928,16 +936,19 @@ export default function App() {
         case "s":
           setUi({ scopesOpen: !scopesOpen });
           break;
+        case "m":
+          toggleMute();
+          break;
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [info, togglePlay, step, seek, shuttle, capture, newTab, cutHere, setReference, setUi, scopesOpen, player.frameRef, openPrefs]);
+  }, [info, togglePlay, step, seek, shuttle, capture, newTab, cutHere, setReference, setUi, scopesOpen, player.frameRef, openPrefs, toggleMute]);
 
   // Un repère par image capturée (deux captures de la même image : un seul repère, clé unique).
   const markers = useMemo(() => [...new Set(captures.map((c) => c.frame))].slice(0, 300), [captures]);
   const previewState = player.playing ? "playing" : stillLoading && preview ? "loading" : still ? "ready" : "idle";
-  const appearance = settings ? { theme: settings.ui.theme, skin: settings.ui.skin, effects: settings.ui.effects } : null;
+  const appearance = settings ? { theme: settings.ui.theme, skin: settings.ui.skin, effects: settings.ui.effects, accent: settings.ui.accent ?? "gold" } : null;
   const shownTheme = appearance ? effectiveTheme(appearance) : "dark";
   const [lookLayer, setLookLayer] = useState<LayerId>("frame");
   const syncNote = sync.status === "corrected" ? `Viewer offset ${syncOffset > 0 ? "+" : ""}${syncOffset} frame corrected` : null;
@@ -969,6 +980,7 @@ export default function App() {
       { id: "ref", group: "Frames", label: "Set the displayed frame as reference A", shortcut: "R", disabled: noFilm, keywords: "a/b compare", run: () => void setReference() },
       { id: "wipe", group: "Frames", label: "A/B wipe", value: compare ? onOff(compare.on) : undefined, shortcut: "W", disabled: !compare, keywords: "compare", run: () => setCompare((c) => (c ? { ...c, on: !c.on } : c)) },
       { id: "preview", group: "Frames", label: "Export preview", value: onOff(preview), shortcut: "P", disabled: noFilm, keywords: "overlay look", run: () => setPreview((p) => !p) },
+      { id: "mute", group: "Playback", label: "Sound", value: muted ? "Off" : "On", shortcut: "M", disabled: noFilm, keywords: "mute audio volume", run: toggleMute },
       { id: "scopes", group: "Frames", label: "Scopes", value: onOff(scopesOpen), shortcut: "S", disabled: noFilm, keywords: "waveform parade vectorscope histogram", run: () => setUi({ scopesOpen: !scopesOpen }) },
       ...([["fit", "Zoom: fit"], [1, "Zoom: 100 %"], [2, "Zoom: 200 %"]] as [Zoom, string][]).map(([z, l]): Command => ({
         id: `zoom-${z}`, group: "Frames", label: l, shortcut: "Z", disabled: noFilm, value: zoom === z ? "Current" : undefined, run: () => setZoom(z),
@@ -1026,7 +1038,7 @@ export default function App() {
     ];
     if (appInfo?.kofi) list.push({ id: "kofi", group: "App", label: "Buy me a coffee on Ko-fi", keywords: "support donate", run: () => void api.openLink("kofi").catch(fail) });
     return list;
-  }, [settings, info, tabs.active, player.playing, player.frameRef, marks, compare, preview, scopesOpen, zoom, analysis, job, output, plan.count,
+  }, [settings, info, tabs.active, player.playing, player.frameRef, marks, compare, preview, scopesOpen, zoom, analysis, job, output, plan.count, muted, toggleMute,
     shots.length, removedCuts.size, addedCuts.size, presets, tab, appInfo, newTab, closeTab, togglePlay, seek, cutHere, capture, setReference,
     setUi, analyze, importCuts, changeSettings, exportBatch, cancelJob, exportBarcode, setAll, resetEdits, savePalette, fail, chooseDir,
     openPrefs, checkUpdate]);
@@ -1051,7 +1063,7 @@ export default function App() {
             <>
               <div className="viewer-row">
                 <div className="viewer-col">
-                  <Viewer info={info} videoRef={player.videoRef} frame={player.frame} preview={preview}
+                  <Viewer info={info} videoRef={player.videoRef} preview={preview}
                     previewSize={previewSize} previewState={previewState} onTogglePreview={() => setPreview((p) => !p)}
                     zoom={zoom} onZoom={setZoom} compare={compare} onSplit={(split) => setCompare((c) => (c ? { ...c, split } : c))}
                     onToggleCompare={() => setCompare((c) => (c ? { ...c, on: !c.on } : c))} onSetReference={() => void setReference()}
@@ -1066,7 +1078,7 @@ export default function App() {
                       <div className="preview-note">LOOK OFF IN EXPORTS · turn on “Apply the look to exported stills” (LOOK)</div>
                     )}
                   </Viewer>
-                  <Transport info={info} marks={marks} playing={player.playing} shuttle={player.shuttleSpeed} busy={busy}
+                  <Transport info={info} frame={player.frame} marks={marks} muted={muted} onMute={toggleMute} playing={player.playing} shuttle={player.shuttleSpeed} busy={busy}
                     onTogglePlay={player.togglePlay} onStep={player.step} onCapture={() => void capture()}
                     onMarkIn={() => setMarks((m) => ({ start: player.frameRef.current, end: m.end != null && m.end < player.frameRef.current ? null : m.end }))}
                     onMarkOut={() => setMarks((m) => ({ start: m.start != null && m.start > player.frameRef.current ? null : m.start, end: player.frameRef.current }))}

@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "./api";
 import { Choice, Toggle } from "./fields";
 import { GPU_NAME, IS_MAC } from "./platform";
-import { SKINS } from "./theme";
+import { ACCENTS, SKINS } from "./theme";
 import { formatBytes } from "./timecode";
 import type { AppInfo, Link, Settings, Skin, UpdateInfo } from "./types";
 
@@ -112,6 +112,18 @@ export function PrefsDialog({ open, section, onSection, onClose, settings: s, ap
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="field">
+                <span className="label">ACCENT</span>
+                <div className="accent-row" role="radiogroup" aria-label="Accent color">
+                  {ACCENTS.map((a) => (
+                    <button key={a.id} type="button" role="radio" aria-checked={s.ui.accent === a.id} disabled={skinFixesTheme}
+                      className="accent-chip" data-chip={a.id} onClick={() => setUi({ accent: a.id })}>
+                      <span className="accent-dot" aria-hidden />{a.name}
+                    </button>
+                  ))}
+                </div>
+                {skinFixesTheme && <p className="hint">The {SKINS.find((k) => k.id === s.ui.skin)?.name} skin has its own accent. Choose Studio to pick one.</p>}
               </div>
               <Toggle label="Skin decoration" checked={s.ui.effects} onChange={(effects) => setUi({ effects })}
                 hint="Color bars, terminal line and texture. Off keeps only the colors." />

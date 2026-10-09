@@ -127,6 +127,7 @@ export const SHORTCUTS: [string, string][] = [
   ["R", "Set the displayed frame as reference A"],
   ["W", "A/B wipe on / off"],
   ["S", "Scopes"],
+  ["M", "Sound on / off"],
   [shortcut("O"), "Open a film"],
   [shortcut("K"), "Commands and settings"],
   [shortcut(","), "Preferences"],

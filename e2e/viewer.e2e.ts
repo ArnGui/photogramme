@@ -186,7 +186,7 @@ test("stepping forward never shows the previous frame number for an instant", as
     const w = window as unknown as { __frames: number[] };
     w.__frames = [];
     const read = () => {
-      const m = /Frame (\d+)/.exec(document.querySelector(".viewer")?.textContent ?? "");
+      const m = /FRAME (\d+)/.exec(document.querySelector(".tc-sub")?.textContent ?? "");
       if (m && w.__frames[w.__frames.length - 1] !== +m[1]) w.__frames.push(+m[1]);
     };
     new MutationObserver(read).observe(document.body, { subtree: true, childList: true, characterData: true });
@@ -252,5 +252,18 @@ test("J / K / L shuttle: K stops reverse, and Home or a step cancels it too", as
   await expect(page.getByRole("button", { name: "Pause" })).toBeVisible();
   await page.keyboard.press("k");
   await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("M and the speaker button mute the viewer, and the choice is saved", async ({ page }) => {
+  const errors = await boot(page, { analysis: true });
+  const muted = () => page.locator("video").evaluate((v: HTMLVideoElement) => v.muted);
+  expect(await muted()).toBe(false);
+  await page.keyboard.press("m");
+  await expect(page.getByRole("button", { name: "Unmute" })).toHaveAttribute("aria-pressed", "true");
+  expect(await muted()).toBe(true);
+  await waitSaved(page, (s) => s.ui.muted === true);
+  await page.getByRole("button", { name: "Unmute" }).click();
+  expect(await muted()).toBe(false);
   expect(errors).toEqual([]);
 });

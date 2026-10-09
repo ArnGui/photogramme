@@ -30,7 +30,7 @@
       overlay: null,
       sheet: { columns: 4, page: "a4", landscape: false, format: "pdf", dpi: 200, imageWidth: 3840, theme: "light", title: "{film}", showTc: true, showShot: true, showClip: false, showFrame: false, showPalette: true },
       updates: { checkAtStartup: false, skipped: null },
-      ui: Object.assign({ scopesOpen: false, scope: "waveform", strip: "barcode", theme: "dark", skin: "studio", effects: true }, opts.ui || {}),
+      ui: Object.assign({ scopesOpen: false, scope: "waveform", strip: "barcode", theme: "dark", skin: "studio", effects: true, accent: "gold", muted: false }, opts.ui || {}),
     },
     presets: [],
     analyzed: !!opts.analysis,

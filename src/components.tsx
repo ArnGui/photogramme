@@ -9,7 +9,7 @@ import { formatBytes, formatFps, frameToTc, tcOf } from "./timecode";
 import type { BarcodeMode, StripMode, CaptureResult, FrameData, FrameRange, ScopeKind, TabsView, Theme, UpdateInfo, VideoInfo } from "./types";
 import {
   IconBackSecond, IconCamera, IconFwdSecond, IconGear, IconLogo, IconNextFrame,
-  IconFolder, IconMoon, IconPause, IconPlay, IconPrevFrame, IconReveal, IconSearch, IconSun, IconWarning,
+  IconFolder, IconMoon, IconMuted, IconSound, IconPause, IconPlay, IconPrevFrame, IconReveal, IconSearch, IconSun, IconWarning,
 } from "./icons";
 
 /* ───────────── Barre du haut : marque, films en onglets, commandes ───────────── */
@@ -189,11 +189,10 @@ const ZOOMS: [Zoom, string][] = [["fit", "Fit"], [1, "100%"], [2, "200%"]];
  * déplacement à la souris. Comparaison A/B : volet glissant.
  * En-tête : format du film, outils de la visionneuse, timecode.
  */
-export function Viewer({ info, videoRef, frame, preview, previewSize, previewState, onTogglePreview, zoom, onZoom,
+export function Viewer({ info, videoRef, preview, previewSize, previewState, onTogglePreview, zoom, onZoom,
   compare, onSplit, onToggleCompare, onSetReference, scopesOpen, onToggleScopes, onCorsFailed, cors, children }: {
   info: VideoInfo;
   videoRef: RefObject<HTMLVideoElement | null>;
-  frame: number;
   preview: boolean;
   previewSize: PreviewSize | null;
   previewState: "idle" | "loading" | "ready" | "playing";
@@ -291,10 +290,6 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
           <button type="button" className="seg-btn" aria-pressed={scopesOpen} onClick={onToggleScopes}
             title="Waveform, parade, vectorscope, histogram (S)">Scopes</button>
         </div>
-        <div className="viewer-tc">
-          <span className="tc-big" aria-label="Timecode">{tcOf(info, frame)}</span>
-          <span className="tc-sub">Frame {(frame + 1).toLocaleString("en")} / {info.frameCount.toLocaleString("en")}</span>
-        </div>
       </div>
       <div className={`viewer-stage ${zoom === "fit" ? "" : "is-zoomed"}`} ref={stage}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => (drag.current = null)}>
@@ -390,33 +385,40 @@ export function ScopesPanel({ kind, data, loading, playing, onKind, onClose }: {
 
 /* ───────────── Transport ───────────── */
 
-export function Transport({ info, marks, playing, shuttle, busy, onTogglePlay, onStep, onCapture, onMarkIn, onMarkOut, onClearMarks }: {
-  info: VideoInfo; marks: { start: number | null; end: number | null }; playing: boolean; shuttle: number; busy: boolean;
+export function Transport({ info, frame, marks, playing, shuttle, busy, muted, onTogglePlay, onStep, onCapture, onMarkIn, onMarkOut, onClearMarks, onMute }: {
+  info: VideoInfo; frame: number; marks: { start: number | null; end: number | null }; playing: boolean; shuttle: number; busy: boolean; muted: boolean;
   onTogglePlay: () => void; onStep: (d: number) => void; onCapture: () => void;
-  onMarkIn: () => void; onMarkOut: () => void; onClearMarks: () => void;
+  onMarkIn: () => void; onMarkOut: () => void; onClearMarks: () => void; onMute: () => void;
 }) {
   const sec = Math.round(info.fps);
-  const hasMarks = marks.start != null || marks.end != null;
+  const tc = (f: number | null) => (f != null ? tcOf(info, f) : "--:--:--:--");
   return (
     <section className="transport" aria-label="Playback and capture">
-      <div className="transport-marks">
-        <button type="button" className="mark-btn" aria-label="Mark in" title="Mark in (I)" onClick={onMarkIn}>IN</button>
-        <span className="mono mark-tc">{marks.start != null ? tcOf(info, marks.start) : "--:--:--:--"}</span>
-        <button type="button" className="mark-btn" aria-label="Mark out" title="Mark out (O)" onClick={onMarkOut}>OUT</button>
-        <span className="mono mark-tc">{marks.end != null ? tcOf(info, marks.end) : "--:--:--:--"}</span>
-        {hasMarks && <button type="button" className="btn-link small" onClick={onClearMarks} title="Alt + X">Clear</button>}
+      <div className="tc-block">
+        <span className="tc-big" aria-label="Timecode">{tcOf(info, frame)}</span>
+        <span className="tc-sub">FRAME {frame + 1} / {info.frameCount}</span>
       </div>
       <div className="transport-buttons">
-        <button type="button" className="btn-round" aria-label="Back one second" title="Shift + ←" onClick={() => onStep(-sec)}><IconBackSecond /></button>
-        <button type="button" className="btn-round" aria-label="Previous frame" title="←" onClick={() => onStep(-1)}><IconPrevFrame /></button>
+        <button type="button" className="btn-icon btn-mark" aria-label="Mark in" title="Mark in (I)" onClick={onMarkIn}>I</button>
+        <button type="button" className="btn-icon" aria-label="Back one second" title="Shift + ←" onClick={() => onStep(-sec)}><IconBackSecond /></button>
+        <button type="button" className="btn-icon" aria-label="Previous frame" title="←" onClick={() => onStep(-1)}><IconPrevFrame /></button>
         <button type="button" className="btn-play" aria-label={playing ? "Pause" : "Play"} title="Space · J/K/L shuttle" onClick={onTogglePlay}>
           {playing ? <IconPause /> : <IconPlay />}
         </button>
-        <button type="button" className="btn-round" aria-label="Next frame" title="→" onClick={() => onStep(1)}><IconNextFrame /></button>
-        <button type="button" className="btn-round" aria-label="Forward one second" title="Shift + →" onClick={() => onStep(sec)}><IconFwdSecond /></button>
+        <button type="button" className="btn-icon" aria-label="Next frame" title="→" onClick={() => onStep(1)}><IconNextFrame /></button>
+        <button type="button" className="btn-icon" aria-label="Forward one second" title="Shift + →" onClick={() => onStep(sec)}><IconFwdSecond /></button>
+        <button type="button" className="btn-icon btn-mark" aria-label="Mark out" title="Mark out (O)" onClick={onMarkOut}>O</button>
+        <button type="button" className="btn-icon" aria-label={muted ? "Unmute" : "Mute"} aria-pressed={muted} title="Sound (M)" onClick={onMute}>
+          {muted ? <IconMuted /> : <IconSound />}
+        </button>
         {shuttle !== 0 && shuttle !== 1 && <span className="shuttle mono">{shuttle > 0 ? "▶" : "◀"} ×{Math.abs(shuttle)}</span>}
       </div>
       <div className="transport-end">
+        <div className="transport-marks">
+          <span>IN <span className="mono mark-tc">{tc(marks.start)}</span></span>
+          <span>OUT <span className="mono mark-tc">{tc(marks.end)}</span></span>
+          {(marks.start != null || marks.end != null) && <button type="button" className="btn-link small" onClick={onClearMarks} title="Alt + X">Clear</button>}
+        </div>
         <button type="button" className="btn-secondary" onClick={onCapture} disabled={busy} aria-busy={busy} title="Capture the displayed frame (C)">
           <IconCamera size={16} />
           {busy ? "Extracting…" : "Capture"}

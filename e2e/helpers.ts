@@ -33,7 +33,7 @@ export interface E2EOpts {
   updates?: boolean;
   warnings?: string[];
   failCommand?: string | null;
-  ui?: Partial<{ scopesOpen: boolean; scope: string; strip: string; theme: "dark" | "light"; skin: "studio" | "atomic" | "mission"; effects: boolean }>;
+  ui?: Partial<{ scopesOpen: boolean; scope: string; strip: string; theme: "dark" | "light"; skin: "studio" | "atomic" | "mission"; effects: boolean; accent: "gold" | "coral" | "teal" | "blue"; muted: boolean }>;
 }
 
 /** Ouvre l'application avec le faux backend ; collecte les erreurs de la console et de la page. */

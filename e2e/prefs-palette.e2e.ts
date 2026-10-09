@@ -39,7 +39,7 @@ test.describe("Preferences", () => {
     expect(await page.locator(".viewer-stage").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(21, 21, 21)");
     // Copie locale : appliquée avant même le chargement des réglages au lancement suivant.
     const local = await page.evaluate(() => localStorage.getItem("photogramme.appearance"));
-    expect(JSON.parse(local!)).toEqual({ theme: "dark", skin: "atomic", effects: false });
+    expect(JSON.parse(local!)).toEqual({ theme: "dark", skin: "atomic", effects: false, accent: "gold" });
     await dialog.getByRole("radio", { name: /Studio/ }).click();
     await dialog.getByRole("group", { name: "THEME" }).getByRole("button", { name: "Light" }).click();
     expect(await root(page)).toMatchObject({ skin: "studio", theme: "light" });
@@ -295,4 +295,17 @@ test.describe("Command palette", () => {
     await page.getByRole("button", { name: /all shortcuts/ }).click();
     await expect(dialog).toBeVisible();
   });
+});
+
+test("the accent is gold by default, can be chosen in Appearance, and only Studio uses it", async ({ page }) => {
+  await boot(page);
+  const root = () => page.evaluate(() => ({ ...document.documentElement.dataset }));
+  expect((await root()).accent).toBe("gold");
+  await page.keyboard.press("Control+,");
+  const group = page.getByRole("radiogroup", { name: "Accent color" });
+  await group.getByRole("radio", { name: "Coral" }).click();
+  expect((await root()).accent).toBe("coral");
+  await waitSaved(page, (s) => s.ui.accent === "coral");
+  await page.getByRole("radio", { name: /Atomic/ }).click();
+  await expect(group.getByRole("radio", { name: "Gold" })).toBeDisabled();
 });

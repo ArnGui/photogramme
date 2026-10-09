@@ -62,6 +62,12 @@ export const IconSun = ({ size = 18 }: P) => (
     <path d="M9 1.8v1.8M9 14.4v1.8M1.8 9h1.8M14.4 9h1.8M3.9 3.9l1.3 1.3M12.8 12.8l1.3 1.3M3.9 14.1l1.3-1.3M12.8 5.2l1.3-1.3" />
   </svg>
 );
+export const IconSound = ({ size = 18 }: P) => (
+  <svg {...base(size)}><path d="M2.5 7v4h3l4 3.2V3.8L5.5 7zM12.2 6.4a3.6 3.6 0 0 1 0 5.2M14.3 4.4a6.4 6.4 0 0 1 0 9.2" /></svg>
+);
+export const IconMuted = ({ size = 18 }: P) => (
+  <svg {...base(size)}><path d="M2.5 7v4h3l4 3.2V3.8L5.5 7zM12 7l4 4M16 7l-4 4" /></svg>
+);
 export const IconMoon = ({ size = 18 }: P) => (
   <svg {...base(size)}><path d="M14.6 11.2A6 6 0 0 1 6.8 3.4a6 6 0 1 0 7.8 7.8Z" /></svg>
 );
