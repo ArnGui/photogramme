@@ -4,7 +4,7 @@
 # Photogramme
 
 **Pull clean stills out of finished films.**<br>
-Built out of pure laziness. Then it got a bit out of hand.
+Built out of pure laziness. AI assisted software. 
 
 [![Latest release](https://img.shields.io/github/v/release/ArnGui/photogramme?label=download&color=2ea043)](https://github.com/ArnGui/photogramme/releases/latest)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-0078d4)
