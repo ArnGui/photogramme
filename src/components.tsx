@@ -8,88 +8,80 @@ import { drawScope, scopeAspect } from "./scopes";
 import { formatBytes, formatFps, frameToTc, tcOf } from "./timecode";
 import type { BarcodeMode, StripMode, CaptureResult, FrameData, FrameRange, ScopeKind, TabsView, Theme, UpdateInfo, VideoInfo } from "./types";
 import {
-  IconBackSecond, IconCamera, IconFwdSecond, IconLogo, IconNextFrame,
-  IconFolder, IconMoon, IconPause, IconPlay, IconPrevFrame, IconReveal, IconSun, IconWarning,
+  IconBackSecond, IconCamera, IconFwdSecond, IconGear, IconLogo, IconNextFrame,
+  IconFolder, IconMoon, IconMuted, IconSound, IconPause, IconPlay, IconPrevFrame, IconReveal, IconSearch, IconSun, IconWarning,
 } from "./icons";
 
-/* ───────────── Barre du haut ───────────── */
+/* ───────────── Barre du haut : marque, films en onglets, commandes ───────────── */
 
-export function TopBar({ info, onOpen, theme, onTheme }: {
-  info: VideoInfo | null; onOpen: () => void; theme: Theme; onTheme: (t: Theme) => void;
+/**
+ * Onglets : un par film récent. Un seul film est chargé ; changer d'onglet le
+ * recharge depuis son projet. `onTheme` est absent quand le skin impose sa
+ * luminosité (seul Studio a un thème clair et un thème sombre).
+ */
+export function TopBar({ tabs, switching, onSelect, onClose, onNew, theme, onTheme, onCommands, onPreferences }: {
+  tabs: TabsView; switching: string | null;
+  onSelect: (key: string) => void; onClose: (key: string) => void; onNew: () => void;
+  theme: Theme; onTheme: ((t: Theme) => void) | null;
+  onCommands: () => void; onPreferences: () => void;
 }) {
   return (
     <header className="topbar">
-      <div className="brand">
-        <span className="accent"><IconLogo /></span>
-        <span className="brand-name">PHOTOGRAMME</span>
+      <div className="brand" aria-label="Photogramme">
+        <span className="brand-mark"><IconLogo size={24} /></span>
+        <span className="brand-name" aria-hidden>PHOTOGRAMME</span>
       </div>
-      {info && (
-        <div className="meta">
-          <span className="meta-file" title={info.path}>{info.fileName}</span>
-          <span title={info.outWidth !== info.width || info.outHeight !== info.height ? `Coded ${info.width}×${info.height}` : undefined}>
-            {info.outWidth}×{info.outHeight}
-          </span>
-          <span>{formatFps(info.fps)}</span>
-          <span title="Start timecode">TC {tcOf(info, 0)}</span>
-          <span>Duration {frameToTc(info.frameCount, info.fps)}</span>
-          <span className={info.nvdecCompatible ? "meta-gpu" : "meta-cpu"}
-            title={info.nvdecCompatible ? `Decodable by the GPU (${GPU_NAME})` : "CPU decoding"}>
-            {info.nvdecCompatible ? GPU_NAME : "CPU decoding"}
-          </span>
+      <nav className="filmtabs" aria-label="Films">
+        <div className="filmtabs-list" role="tablist">
+          {tabs.tabs.map((t) => {
+            const active = t.key === tabs.active;
+            return (
+              <div key={t.key} role="tab" aria-selected={active} tabIndex={0}
+                className={`filmtab${active ? " is-active" : ""}${t.missing ? " is-missing" : ""}${switching === t.key ? " is-loading" : ""}`}
+                title={t.missing ? `File not found: ${t.folder}` : `${t.fileName}\n${t.folder}`}
+                onClick={() => !active && onSelect(t.key)}
+                onKeyDown={(e) => {
+                  if ((e.key === "Enter" || e.key === " ") && !active) {
+                    e.preventDefault();
+                    onSelect(t.key);
+                  }
+                }}
+                onAuxClick={(e) => {
+                  if (e.button === 1) {
+                    e.preventDefault();
+                    onClose(t.key);
+                  }
+                }}>
+                <span className="filmtab-name">{t.fileName}</span>
+                <button type="button" className="filmtab-close" aria-label={`Close ${t.fileName}`} title="Close the tab (the project is kept)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose(t.key);
+                  }}>×</button>
+              </div>
+            );
+          })}
         </div>
-      )}
+        <button type="button" className="filmtab-new" onClick={onNew} aria-label="Open a film in a new tab" title={`Open a film (${shortcut("O")})`}>+</button>
+      </nav>
       <div className="topbar-actions">
-        <button type="button" className="btn-theme" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}
-          aria-label={theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"}
-          title={theme === "dark" ? "Light theme" : "Dark theme"}>
-          {theme === "dark" ? <IconSun /> : <IconMoon />}
+        <button type="button" className="cmd-button" onClick={onCommands} title={`Commands and settings (${shortcut("K")})`}>
+          <IconSearch />
+          <span className="cmd-button-label">Search commands</span>
+          <kbd>{shortcut("K")}</kbd>
         </button>
-        <button className="btn-ghost" onClick={onOpen}>OPEN</button>
+        {onTheme && (
+          <button type="button" className="btn-icon-flat" onClick={() => onTheme(theme === "dark" ? "light" : "dark")}
+            aria-label={theme === "dark" ? "Switch to the light theme" : "Switch to the dark theme"}
+            title={theme === "dark" ? "Light theme" : "Dark theme"}>
+            {theme === "dark" ? <IconSun /> : <IconMoon />}
+          </button>
+        )}
+        <button type="button" className="btn-icon-flat" onClick={onPreferences} aria-label="Preferences" title={`Preferences (${shortcut(",")})`}>
+          <IconGear />
+        </button>
       </div>
     </header>
-  );
-}
-
-/** Onglets : un par film récent. Un seul film est chargé ; changer d'onglet le recharge depuis son projet. */
-export function TabBar({ tabs, switching, onSelect, onClose, onNew }: {
-  tabs: TabsView; switching: string | null;
-  onSelect: (key: string) => void; onClose: (key: string) => void; onNew: () => void;
-}) {
-  if (!tabs.tabs.length) return null;
-  return (
-    <nav className="filmtabs" aria-label="Films">
-      <div className="filmtabs-list" role="tablist">
-        {tabs.tabs.map((t) => {
-          const active = t.key === tabs.active;
-          return (
-            <div key={t.key} role="tab" aria-selected={active} tabIndex={0}
-              className={`filmtab${active ? " is-active" : ""}${t.missing ? " is-missing" : ""}${switching === t.key ? " is-loading" : ""}`}
-              title={t.missing ? `File not found: ${t.folder}` : `${t.fileName}\n${t.folder}`}
-              onClick={() => !active && onSelect(t.key)}
-              onKeyDown={(e) => {
-                if ((e.key === "Enter" || e.key === " ") && !active) {
-                  e.preventDefault();
-                  onSelect(t.key);
-                }
-              }}
-              onAuxClick={(e) => {
-                if (e.button === 1) {
-                  e.preventDefault();
-                  onClose(t.key);
-                }
-              }}>
-              <span className="filmtab-name">{t.fileName}</span>
-              <button type="button" className="filmtab-close" aria-label={`Close ${t.fileName}`} title="Close the tab (the project is kept)"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClose(t.key);
-                }}>×</button>
-            </div>
-          );
-        })}
-      </div>
-      <button type="button" className="filmtab-new" onClick={onNew} aria-label="Open a film in a new tab" title={`Open a film (${shortcut("O")})`}>+</button>
-    </nav>
   );
 }
 
@@ -138,8 +130,8 @@ export function EmptyState({ onOpen, dragging }: { onOpen: () => void; dragging:
         <span className="corner bl" /><span className="corner br" />
         <p className="empty-title">{dragging ? "DROP THE FILM HERE" : "NO FILM LOADED"}</p>
         <p className="empty-sub">H.264 files · mp4, mov, m4v, mkv</p>
-        <button className="btn-primary" onClick={onOpen}>OPEN A FILM</button>
-        <p className="empty-hint">or drop a file onto the window</p>
+        <button type="button" className="btn-primary" onClick={onOpen}>Open a film</button>
+        <p className="empty-hint">or drop a file onto the window · {shortcut("O")}</p>
       </div>
     </div>
   );
@@ -188,17 +180,19 @@ function useImageCanvas(ref: RefObject<HTMLCanvasElement | null>, data: FrameDat
   }, [ref, data]);
 }
 
+const ZOOMS: [Zoom, string][] = [["fit", "Fit"], [1, "100%"], [2, "200%"]];
+
 /**
  * Lecture : la balise <video>. Aperçu d'export : un Canvas qui reçoit la
  * composition exacte (mêmes pixels et même code que le fichier exporté).
  * Zoom : « fit », 100 % (un pixel du film = un pixel de l'écran) ou 200 %,
  * déplacement à la souris. Comparaison A/B : volet glissant.
+ * En-tête : format du film, outils de la visionneuse, timecode.
  */
-export function Viewer({ info, videoRef, frame, preview, previewSize, previewState, onTogglePreview, zoom, onZoom,
-  compare, onSplit, onToggleCompare, onCorsFailed, cors, children }: {
+export function Viewer({ info, videoRef, preview, previewSize, previewState, onTogglePreview, zoom, onZoom,
+  compare, onSplit, onToggleCompare, onSetReference, scopesOpen, onToggleScopes, onCorsFailed, cors, children }: {
   info: VideoInfo;
   videoRef: RefObject<HTMLVideoElement | null>;
-  frame: number;
   preview: boolean;
   previewSize: PreviewSize | null;
   previewState: "idle" | "loading" | "ready" | "playing";
@@ -208,6 +202,9 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
   compare: Compare | null;
   onSplit: (s: number) => void;
   onToggleCompare: () => void;
+  onSetReference: () => void;
+  scopesOpen: boolean;
+  onToggleScopes: () => void;
   onCorsFailed: () => void;
   cors: boolean;
   children?: ReactNode;
@@ -262,32 +259,37 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
     if (!r) return;
     onSplit(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)));
   };
-  const zooms: [Zoom, string][] = [["fit", "FIT"], [1, "100%"], [2, "200%"]];
+  const coded = info.outWidth !== info.width || info.outHeight !== info.height;
 
   return (
-    <section className="viewer" aria-label="Viewer">
-      <div className="viewer-hud">
-        <span>TC {tcOf(info, frame)}</span>
-        <span className="hud-group">
-          <button type="button" className={`hud-toggle ${preview ? "on" : ""}`} aria-pressed={preview} onClick={onTogglePreview}
-            title="Shows the exact exported image (P)">
-            EXPORT PREVIEW <kbd>P</kbd>
-            {preview && previewState === "loading" && <span className="dot" aria-label="loading" />}
-          </button>
-          {compare && (
-            <button type="button" className={`hud-toggle ${compare.on ? "on" : ""}`} aria-pressed={compare.on} onClick={onToggleCompare}
-              title={`Reference ${compare.ref.timecode} on the left of the wipe (W). R sets a new reference.`}>
-              A/B <kbd>W</kbd>
-            </button>
-          )}
-          <span className="zoom-pills" role="group" aria-label="Zoom">
-            {zooms.map(([z, l]) => (
-              <button key={String(z)} type="button" className="hud-toggle" aria-pressed={zoom === z} onClick={() => onZoom(z)}
-                title="Z cycles the zoom">{l}</button>
-            ))}
+    <section className="viewer panel-box" aria-label="Viewer">
+      <div className="viewer-head">
+        <div className="viewer-meta">
+          {preview ? (
+            <span className={`preview-badge ${previewState === "loading" ? "is-loading" : ""}`}>Export preview</span>
+          ) : null}
+          <span title={coded ? `Coded ${info.width}×${info.height}` : undefined}>{info.outWidth}×{info.outHeight}</span>
+          <span>{formatFps(info.fps)}</span>
+          <span title="Duration">{frameToTc(info.frameCount, info.fps)}</span>
+          <span className={info.nvdecCompatible ? "meta-gpu" : "meta-cpu"}
+            title={info.nvdecCompatible ? `Decodable by the GPU (${GPU_NAME})` : "CPU decoding"}>
+            {info.nvdecCompatible ? "GPU" : "CPU"}
           </span>
-        </span>
-        <span>FRAME {String(frame).padStart(6, "0")}</span>
+        </div>
+        <div className="viewer-tools seg" role="toolbar" aria-label="Viewer tools">
+          <select className="zoom-select" aria-label="Zoom" title="Zoom (Z cycles)" value={String(zoom)}
+            onChange={(e) => onZoom(e.target.value === "fit" ? "fit" : (Number(e.target.value) as 1 | 2))}>
+            {ZOOMS.map(([z, l]) => <option key={String(z)} value={String(z)}>{l}</option>)}
+          </select>
+          <button type="button" className="seg-btn" aria-pressed={preview} onClick={onTogglePreview}
+            title="Shows the exact exported image (P)">Preview</button>
+          <button type="button" className="seg-btn" aria-pressed={false} onClick={onSetReference}
+            title="Set the displayed frame as reference A (R)">Set A</button>
+          <button type="button" className="seg-btn" aria-pressed={!!compare?.on} disabled={!compare} onClick={onToggleCompare}
+            title={compare ? `Wipe between A (${compare.ref.timecode}) and the current frame (W)` : "Set a reference A first (R)"}>Wipe</button>
+          <button type="button" className="seg-btn" aria-pressed={scopesOpen} onClick={onToggleScopes}
+            title="Waveform, parade, vectorscope, histogram (S)">Scopes</button>
+        </div>
       </div>
       <div className={`viewer-stage ${zoom === "fit" ? "" : "is-zoomed"}`} ref={stage}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={() => (drag.current = null)}>
@@ -334,7 +336,7 @@ export function Viewer({ info, videoRef, frame, preview, previewSize, previewSta
 
 /* ───────────── Scopes ───────────── */
 
-const SCOPES: [ScopeKind, string][] = [["waveform", "WAVE"], ["parade", "PARADE"], ["vectorscope", "VECTOR"], ["histogram", "HISTO"]];
+const SCOPES: [ScopeKind, string][] = [["waveform", "Waveform"], ["parade", "Parade"], ["vectorscope", "Vector"], ["histogram", "Histo"]];
 
 /** Panneau des instruments, calculés sur l'image exacte arrêtée. */
 export function ScopesPanel({ kind, data, loading, playing, onKind, onClose }: {
@@ -360,14 +362,15 @@ export function ScopesPanel({ kind, data, loading, playing, onKind, onClose }: {
     drawScope(ctx, kind, { rgba: data.rgba, width: data.width, height: data.height }, { x: 0, y: 0, w, h }, 1);
   }, [kind, data, width]);
   return (
-    <aside className="scopes" aria-label="Scopes">
-      <div className="row-between">
-        <div className="pills scope-pills" role="group" aria-label="Scope">
-          {SCOPES.map(([k, l]) => (
-            <button key={k} type="button" className="pill" aria-pressed={kind === k} onClick={() => onKind(k)}>{l}</button>
-          ))}
-        </div>
+    <aside className="scopes panel-box" aria-label="Scopes">
+      <div className="panel-head">
+        <span className="section-label">Scopes</span>
         <button type="button" className="btn-mini" aria-label="Close the scopes (S)" title="S" onClick={onClose}>×</button>
+      </div>
+      <div className="seg seg-fill" role="group" aria-label="Scope">
+        {SCOPES.map(([k, l]) => (
+          <button key={k} type="button" className="seg-btn" aria-pressed={kind === k} onClick={() => onKind(k)}>{l}</button>
+        ))}
       </div>
       <div className="scope-canvas" ref={wrap}>
         <canvas ref={ref} />
@@ -382,44 +385,55 @@ export function ScopesPanel({ kind, data, loading, playing, onKind, onClose }: {
 
 /* ───────────── Transport ───────────── */
 
-export function Transport({ info, frame, playing, shuttle, busy, onTogglePlay, onStep, onCapture, onMarkIn, onMarkOut }: {
-  info: VideoInfo; frame: number; playing: boolean; shuttle: number; busy: boolean;
-  onTogglePlay: () => void; onStep: (d: number) => void; onCapture: () => void; onMarkIn: () => void; onMarkOut: () => void;
+export function Transport({ info, frame, marks, playing, shuttle, busy, muted, onTogglePlay, onStep, onCapture, onMarkIn, onMarkOut, onClearMarks, onMute }: {
+  info: VideoInfo; frame: number; marks: { start: number | null; end: number | null }; playing: boolean; shuttle: number; busy: boolean; muted: boolean;
+  onTogglePlay: () => void; onStep: (d: number) => void; onCapture: () => void;
+  onMarkIn: () => void; onMarkOut: () => void; onClearMarks: () => void; onMute: () => void;
 }) {
   const sec = Math.round(info.fps);
+  const tc = (f: number | null) => (f != null ? tcOf(info, f) : "--:--:--:--");
   return (
     <section className="transport" aria-label="Playback and capture">
       <div className="tc-block">
-        <span className="tc-big">{tcOf(info, frame)}</span>
-        <span className="tc-sub">FRAME {frame + 1} / {info.frameCount}{shuttle !== 0 && shuttle !== 1 ? `  ·  ${shuttle > 0 ? "▶" : "◀"} ×${Math.abs(shuttle)}` : ""}</span>
+        <span className="tc-big" aria-label="Timecode">{tcOf(info, frame)}</span>
+        <span className="tc-sub">FRAME {frame + 1} / {info.frameCount}</span>
       </div>
       <div className="transport-buttons">
-        <button className="btn-icon btn-mark" aria-label="Mark in" title="Mark in (I)" onClick={onMarkIn}>I</button>
-        <button className="btn-icon" aria-label="Back one second" title="Shift + ←" onClick={() => onStep(-sec)}><IconBackSecond /></button>
-        <button className="btn-icon" aria-label="Previous frame" title="←" onClick={() => onStep(-1)}><IconPrevFrame /></button>
-        <button className="btn-play" aria-label={playing ? "Pause" : "Play"} title="Space · J/K/L shuttle" onClick={onTogglePlay}>
+        <button type="button" className="btn-icon btn-mark" aria-label="Mark in" title="Mark in (I)" onClick={onMarkIn}>I</button>
+        <button type="button" className="btn-icon" aria-label="Back one second" title="Shift + ←" onClick={() => onStep(-sec)}><IconBackSecond /></button>
+        <button type="button" className="btn-icon" aria-label="Previous frame" title="←" onClick={() => onStep(-1)}><IconPrevFrame /></button>
+        <button type="button" className="btn-play" aria-label={playing ? "Pause" : "Play"} title="Space · J/K/L shuttle" onClick={onTogglePlay}>
           {playing ? <IconPause /> : <IconPlay />}
         </button>
-        <button className="btn-icon" aria-label="Next frame" title="→" onClick={() => onStep(1)}><IconNextFrame /></button>
-        <button className="btn-icon" aria-label="Forward one second" title="Shift + →" onClick={() => onStep(sec)}><IconFwdSecond /></button>
-        <button className="btn-icon btn-mark" aria-label="Mark out" title="Mark out (O)" onClick={onMarkOut}>O</button>
+        <button type="button" className="btn-icon" aria-label="Next frame" title="→" onClick={() => onStep(1)}><IconNextFrame /></button>
+        <button type="button" className="btn-icon" aria-label="Forward one second" title="Shift + →" onClick={() => onStep(sec)}><IconFwdSecond /></button>
+        <button type="button" className="btn-icon btn-mark" aria-label="Mark out" title="Mark out (O)" onClick={onMarkOut}>O</button>
+        <button type="button" className="btn-icon" aria-label={muted ? "Unmute" : "Mute"} aria-pressed={muted} title="Sound (M)" onClick={onMute}>
+          {muted ? <IconMuted /> : <IconSound />}
+        </button>
+        {shuttle !== 0 && shuttle !== 1 && <span className="shuttle mono">{shuttle > 0 ? "▶" : "◀"} ×{Math.abs(shuttle)}</span>}
       </div>
-      <button className="btn-capture" onClick={onCapture} disabled={busy} aria-busy={busy}>
-        <IconCamera />
-        {busy ? "EXTRACTING…" : "CAPTURE"}
-        <kbd>C</kbd>
-      </button>
+      <div className="transport-end">
+        <div className="transport-marks">
+          <span>IN <span className="mono mark-tc">{tc(marks.start)}</span></span>
+          <span>OUT <span className="mono mark-tc">{tc(marks.end)}</span></span>
+          {(marks.start != null || marks.end != null) && <button type="button" className="btn-link small" onClick={onClearMarks} title="Alt + X">Clear</button>}
+        </div>
+        <button type="button" className="btn-secondary" onClick={onCapture} disabled={busy} aria-busy={busy} title="Capture the displayed frame (C)">
+          <IconCamera size={16} />
+          {busy ? "Extracting…" : "Capture"}
+          <kbd>C</kbd>
+        </button>
+      </div>
     </section>
   );
 }
 
-/* ───────────── Code-barre ───────────── */
+/* ───────────── Bande au-dessus de la timeline ───────────── */
 
-/** Bande au-dessus de la timeline : code-barre couleur ou vignettes du film.
- *  Un clic positionne la lecture ; le sélecteur à droite change le contenu ou masque la bande. */
-export const BarcodeStrip = memo(function BarcodeStrip({ analysisId, mode, strip, frames, onSeek, onStrip }: {
-  analysisId: number; mode: BarcodeMode; strip: StripMode; frames: number;
-  onSeek: (f: number) => void; onStrip: (s: StripMode) => void;
+/** Code-barre couleur ou vignettes du film ; un clic positionne la lecture. */
+export const BarcodeStrip = memo(function BarcodeStrip({ analysisId, mode, strip, frames, onSeek }: {
+  analysisId: number; mode: BarcodeMode; strip: StripMode; frames: number; onSeek: (f: number) => void;
 }) {
   // Mesure sur un conteneur toujours présent : la largeur reste connue quand on masque puis réaffiche la bande.
   const ref = useRef<HTMLDivElement>(null);
@@ -441,13 +455,11 @@ export const BarcodeStrip = memo(function BarcodeStrip({ analysisId, mode, strip
       setUrl(null);
     };
   }, [analysisId, mode, width, strip]);
-  // Une vignette 16:9 par case de 36 px de haut, centrée sur sa portion du film.
+  // Une vignette 16:9 par case, centrée sur sa portion du film.
   const tiles = strip === "frames" && width > 0 ? Math.max(1, Math.round(width / 64)) : 0;
   const centers = Array.from({ length: tiles }, (_, i) => Math.round(((i + 0.5) / tiles) * Math.max(0, frames - 1)));
-  const options: [StripMode, string][] = [["barcode", "COLORS"], ["frames", "FRAMES"], ["off", "OFF"]];
   return (
-    <div className="strip">
-      <div className="strip-track" ref={ref}>
+    <div className="strip-track" ref={ref}>
       {strip !== "off" && (
         <button type="button" className={`barcode${strip === "frames" ? " filmstrip" : ""}`}
           aria-label={strip === "frames" ? "Film frames: click to jump" : "Film barcode: click to jump"}
@@ -461,13 +473,6 @@ export const BarcodeStrip = memo(function BarcodeStrip({ analysisId, mode, strip
           ))}
         </button>
       )}
-      </div>
-      <div className="pills strip-switch" role="group" aria-label="Strip above the timeline">
-        {options.map(([v, l]) => (
-          <button key={v} type="button" className="pill" aria-pressed={strip === v} onClick={() => onStrip(v)}
-            title={v === "off" ? "Hide the strip" : v === "frames" ? "Show frames from the film" : "Show the color barcode"}>{l}</button>
-        ))}
-      </div>
     </div>
   );
 });
@@ -485,7 +490,7 @@ export function Timeline({ info, frame, markers, cuts, manualCuts, range, onSeek
   const re = range.end ?? max;
   const hasRange = range.start != null || range.end != null;
   return (
-    <section className="timeline" aria-label="Timeline">
+    <div className="timeline">
       <div className="timeline-track">
         {hasRange && (
           <>
@@ -517,42 +522,98 @@ export function Timeline({ info, frame, markers, cuts, manualCuts, range, onSeek
         />
       </div>
       <div className="timeline-ticks">{ticks.map((t, i) => <span key={i}>{t}</span>)}</div>
+    </div>
+  );
+}
+
+/** Panneau du bas : choix de la bande (code-barre, images, rien), légende, bande et timeline. */
+export function TimelinePanel({ strip, onStrip, hasAnalysis, children }: {
+  strip: StripMode; onStrip: (s: StripMode) => void; hasAnalysis: boolean; children: ReactNode;
+}) {
+  const options: [StripMode, string, string][] = [
+    ["barcode", "Barcode", "Show the color barcode"], ["frames", "Frames", "Show frames from the film"], ["off", "Off", "Hide the strip"],
+  ];
+  return (
+    <section className="timeline-panel panel-box" aria-label="Timeline">
+      <div className="timeline-toolbar">
+        <span className="section-label">Strip</span>
+        <div className="seg seg-small" role="group" aria-label="Strip above the timeline">
+          {options.map(([v, l, t]) => (
+            <button key={v} type="button" className="seg-btn" aria-pressed={strip === v} disabled={!hasAnalysis}
+              title={hasAnalysis ? t : "Analyze the film to see the strip"} onClick={() => onStrip(v)}>{l}</button>
+          ))}
+        </div>
+        <div className="legend" aria-hidden>
+          <span className="legend-cut">Detected cut</span>
+          <span className="legend-manual">Your cut</span>
+          <span className="legend-capture">Capture</span>
+        </div>
+      </div>
+      {children}
     </section>
   );
 }
 
-/* ───────────── Captures ───────────── */
+/* ───────────── Barre d'état ───────────── */
+
+/** Décodeur : ce que la dernière analyse a réellement utilisé, sinon ce que le fichier permet. */
+export function decoderLabel(info: VideoInfo, analyzedWith: "gpu" | "cpu" | null): { text: string; gpu: boolean } {
+  if (analyzedWith === "gpu") return { text: `Analyzed on the GPU (${GPU_NAME})`, gpu: true };
+  if (analyzedWith === "cpu") return { text: "Analyzed on the CPU", gpu: false };
+  return info.nvdecCompatible ? { text: `GPU-decodable file (${GPU_NAME})`, gpu: true } : { text: "CPU decoding", gpu: false };
+}
+
+export function StatusBar({ info, analyzedWith, syncNote, onShortcuts }: {
+  info: VideoInfo | null; analyzedWith: "gpu" | "cpu" | null; syncNote: string | null; onShortcuts: () => void;
+}) {
+  const dec = info ? decoderLabel(info, analyzedWith) : null;
+  return (
+    <footer className="statusbar">
+      {dec && <span className={dec.gpu ? "status-gpu" : "status-cpu"}>● {dec.text}</span>}
+      {syncNote && <span className="status-sync">{syncNote}</span>}
+      <span className="status-keys">
+        <kbd>Space</kbd> play · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> shuttle · <kbd>I</kbd><kbd>O</kbd> in/out · <kbd>B</kbd> cut ·{" "}
+        <button type="button" className="btn-link" onClick={onShortcuts}><kbd>?</kbd> all shortcuts</button>
+      </span>
+    </footer>
+  );
+}
+
+/* ───────────── Gallery (captures) ───────────── */
 
 /** Au-delà, seules les dernières captures sont affichées (le DOM reste léger). */
 const MAX_SHOWN = 240;
 
-export function CapturesPanel({ captures, onSeek, onReveal, onSavePalette, onSetReference }: {
-  captures: CaptureResult[]; onSeek: (f: number) => void; onReveal: (p: string) => void;
+export function GalleryPanel({ captures, reference, onSeek, onReveal, onSavePalette, onSetReference }: {
+  captures: CaptureResult[]; reference: string | null; onSeek: (f: number) => void; onReveal: (p: string) => void;
   onSavePalette: () => void; onSetReference: () => void;
 }) {
   const last = captures[0];
   return (
-    <section className="panel" aria-label="Captures">
-      <h2>CAPTURES <span className="count">({captures.length})</span></h2>
-      <div className="row wrap">
-        <button type="button" className="btn-small" onClick={onSavePalette} title="Writes .ase (Adobe, Affinity), .css, .gpl (GIMP, Krita) and .json files">
+    <div className="gallery">
+      <div className="btn-row">
+        <button type="button" className="btn-secondary" onClick={onSavePalette} title="Writes .ase (Adobe, Affinity), .css, .gpl (GIMP, Krita) and .json files">
           Save this frame's palette
         </button>
-        <button type="button" className="btn-small" onClick={onSetReference} title="R">Set as A/B reference</button>
+        <button type="button" className="btn-secondary" onClick={onSetReference} title="R">Set as A/B reference</button>
       </div>
+      {reference && <p className="small muted">Reference A: <span className="mono">{reference}</span> · W toggles the wipe.</p>}
       {last && <p className="small muted">Last: {formatBytes(last.bytes)} · {last.width}×{last.height}{last.fileName.endsWith(".png") ? " · PNG" : ` · q${last.quality}`}</p>}
       {captures.length === 0 ? (
-        <p className="muted">Press <kbd>C</kbd> to capture the displayed frame.</p>
+        <p className="muted empty-note">Press <kbd>C</kbd> to capture the displayed frame. Batch exports appear here too.</p>
       ) : (
         <div className="thumbs">
           {captures.slice(0, MAX_SHOWN).map((c) => (
             <figure key={c.path} className="thumb">
-              <button className="thumb-img" onClick={() => onSeek(c.frame)} aria-label={`Go back to ${c.timecode}`}>
+              <button type="button" className="thumb-img" onClick={() => onSeek(c.frame)} aria-label={`Go back to ${c.timecode}`}>
                 <img src={convertFileSrc(c.path)} alt="" loading="lazy" decoding="async" />
               </button>
               <figcaption>
-                <span>{c.shot != null ? `#${c.shot} · ` : ""}{c.timecode}</span>
-                <button className="btn-mini" aria-label={`Show ${c.fileName} in ${FILE_MANAGER}`} onClick={() => onReveal(c.path)}>
+                <span className="thumb-text">
+                  <span className="mono">{c.shot != null ? `#${c.shot} · ` : ""}{c.timecode}</span>
+                  <span className="thumb-file" title={c.fileName}>{c.fileName}</span>
+                </span>
+                <button type="button" className="btn-mini" aria-label={`Show ${c.fileName} in ${FILE_MANAGER}`} title={`Show in ${FILE_MANAGER}`} onClick={() => onReveal(c.path)}>
                   <IconReveal size={14} />
                 </button>
               </figcaption>
@@ -561,7 +622,7 @@ export function CapturesPanel({ captures, onSeek, onReveal, onSavePalette, onSet
         </div>
       )}
       {captures.length > MAX_SHOWN && <p className="small muted">{captures.length - MAX_SHOWN} older captures not shown.</p>}
-    </section>
+    </div>
   );
 }
 
@@ -591,7 +652,7 @@ export function Toast({ toast, onClose, onError }: { toast: ToastState; onClose:
           <IconFolder /> {show.folder ? "Open folder" : "Show in folder"}
         </button>
       )}
-      <button className="btn-link" onClick={onClose} aria-label="Close">×</button>
+      <button type="button" className="btn-link" onClick={onClose} aria-label="Close">×</button>
     </div>
   );
 }

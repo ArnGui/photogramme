@@ -46,6 +46,8 @@ Built out of pure laziness. Then it got a bit out of hand.
 - **Palettes and barcode.** 1 to 16 dominant colors per frame, plus the color barcode of the whole film.
 - **One tab per film, nothing lost.** Your selections, cuts, in/out points and analysis are saved as you go. Close the app, come back tomorrow, pick up where you left off.
 - **NVIDIA GPU decoding** when there is a GeForce card. Without one, everything still works, just slower.
+- **Three skins.** *Studio* (dark or light), *Atomic* (amber and teal, retro-futurist) and *Mission* (cream paper, bright inks). One click in Preferences. The viewer and the scopes stay neutral grey in every skin, so the skin never changes how you judge the picture.
+- **Every command one search away.** `Ctrl + K` finds any action or setting by name.
 - **Updates itself**, with signed updates only. No account, no telemetry, no cloud.
 
 ## Screenshots
@@ -137,7 +139,7 @@ On a Mac, the analysis is decoded by VideoToolbox, the video engine built into A
 
 ### Privacy and updates
 
-Photogramme works offline. Your films never leave your computer. The only network request is the update check at startup, which asks GitHub whether a newer version exists. Nothing else is sent, and the check can be turned off in *Settings › About*. Updates are signed: the app refuses any file that doesn't carry the project's signature.
+Photogramme works offline. Your films never leave your computer. The only network request is the update check at startup, which asks GitHub whether a newer version exists. Nothing else is sent, and the check can be turned off in *Preferences › Updates* (`Ctrl + ,`). Updates are signed: the app refuses any file that doesn't carry the project's signature.
 
 <details>
 <summary><b>Keyboard shortcuts</b></summary>
@@ -157,6 +159,11 @@ Photogramme works offline. Your films never leave your computer. The only networ
 | `R` / `W` | Set the A/B reference / wipe on or off |
 | `P` | Export preview on / off |
 | `Ctrl + O` | Open a film (you can also drop it on the window) |
+| `Ctrl + K` | Search every command and setting |
+| `Ctrl + ,` | Preferences |
+| `?` | List of shortcuts |
+
+On a Mac, `Ctrl` is `⌘` and `Alt` is `⌥`. Shortcuts are ignored while you type in a field.
 
 </details>
 

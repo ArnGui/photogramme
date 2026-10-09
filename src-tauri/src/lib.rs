@@ -26,6 +26,7 @@ mod project_cmd;
 mod runner;
 mod shots_cmd;
 mod state;
+mod watchdog;
 
 use photogramme_core::settings;
 use state::AppState;
@@ -57,6 +58,9 @@ pub fn run() {
             if let WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. }) = event {
                 film::on_drop(window.app_handle(), paths);
             }
+            if let WindowEvent::Focused(true) = event {
+                watchdog::on_focus(window.app_handle());
+            }
             if let WindowEvent::Destroyed = event {
                 // Aucun FFmpeg orphelin à la fermeture.
                 if let Some(s) = window.app_handle().try_state::<AppState>() {
@@ -72,6 +76,8 @@ pub fn run() {
             if let Some(dir) = loaded.output_dir.as_deref().filter(|d| Path::new(d).is_dir()) {
                 let _ = app.asset_protocol_scope().allow_directory(dir, false);
             }
+            app.manage(watchdog::Watchdog::default());
+            watchdog::start(app.handle().clone());
             app.manage(AppState::new(loaded, settings_path, config.join("presets"), projects, pubkey.is_some()));
             if let Some(film) = film::startup_film(std::env::args()) {
                 film::open_at_startup(app.handle(), &film);
@@ -79,6 +85,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            watchdog::heartbeat,
             film::pick_video,
             film::current_video,
             frames::capture,

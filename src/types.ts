@@ -56,6 +56,10 @@ export type BarcodeMode = "vertical" | "average";
 export type ScopeKind = "waveform" | "parade" | "vectorscope" | "histogram";
 export type StripMode = "barcode" | "frames" | "off";
 export type Theme = "dark" | "light";
+/** Habillage de l'interface ; ne touche jamais la visionneuse, les scopes ni les fichiers. */
+export type Skin = "studio" | "atomic" | "mission";
+/** Couleur d'accent du skin Studio ; l'or est celui des versions 0.5. */
+export type Accent = "gold" | "coral" | "teal" | "blue";
 
 export type Anchor =
   | "topLeft" | "top" | "topRight"
@@ -166,7 +170,7 @@ export interface Settings {
   overlay: OverlayPreset;
   sheet: SheetSettings;
   updates: { checkAtStartup: boolean; skipped: string | null };
-  ui: { scopesOpen: boolean; scope: ScopeKind; strip: StripMode; theme: Theme };
+  ui: { scopesOpen: boolean; scope: ScopeKind; strip: StripMode; theme: Theme; skin: Skin; effects: boolean; accent: Accent; muted: boolean };
 }
 
 export interface CaptureResult {
@@ -292,6 +296,8 @@ export interface FrameData {
   job: number | null;
   total: number | null;
   rgba: Uint8ClampedArray;
+  /** Dessinée depuis la visionneuse en attendant l'image exacte de FFmpeg. */
+  provisional?: boolean;
 }
 
 export type FilmEvent = { kind: "opened"; info: VideoInfo } | { kind: "failed"; message: string };

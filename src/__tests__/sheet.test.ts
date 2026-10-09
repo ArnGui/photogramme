@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { captionLines, cellOrigin, expandTitle, pagePixels, sheetLayout } from "../sheet";
+import { MAX_PIXELS, MAX_SIDE, captionLines, cellOrigin, expandTitle, pagePixels, sheetLayout } from "../sheet";
 import type { SheetSettings } from "../types";
 
 const base: SheetSettings = {
@@ -30,6 +30,24 @@ describe("planche contact", () => {
     expect(L.rows).toBe(3);
     const [, y] = cellOrigin(L, 8);
     expect(y + L.cellH + L.footerH + L.margin).toBe(L.pageH);
+  });
+
+  it("image libre trop grande : coupée en plusieurs images, jamais au-delà des plafonds", () => {
+    // Le cas qui faisait planter la v0.7 : 31 images 4K, une colonne (3840 × 74 604 px, 1,1 Go).
+    for (const [imageWidth, columns] of [[3840, 1], [7680, 2], [16000, 1], [16000, 4], [16000, 12], [3840, 4]]) {
+      const L = sheetLayout({ ...base, page: "image", imageWidth, columns }, 3840, 2160, 31);
+      expect(L.pageW, `${imageWidth}/${columns}`).toBeLessThanOrEqual(MAX_SIDE);
+      expect(L.pageH, `${imageWidth}/${columns}`).toBeLessThanOrEqual(MAX_SIDE);
+      expect(L.pageW * L.pageH, `${imageWidth}/${columns}`).toBeLessThanOrEqual(MAX_PIXELS);
+      expect(L.cellW, "jamais d'agrandissement").toBeLessThanOrEqual(3840);
+      expect(L.pages * L.perPage).toBeGreaterThanOrEqual(31);
+    }
+    // Réglage raisonnable : toujours une seule image, à la largeur demandée.
+    const ok = sheetLayout({ ...base, page: "image", imageWidth: 3840, columns: 4 }, 3840, 2160, 31);
+    expect([ok.pages, ok.pageW]).toEqual([1, 3840]);
+    // Pages imposées : l'A3 à 600 dpi reste possible.
+    const a3 = sheetLayout({ ...base, page: "a3", dpi: 600 }, 3840, 2160, 31);
+    expect(a3.pageW * a3.pageH).toBeLessThanOrEqual(MAX_PIXELS);
   });
 
   it("légendes et titre", () => {

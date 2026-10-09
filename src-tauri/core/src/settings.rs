@@ -140,7 +140,7 @@ impl Default for SheetSettings {
             page: SheetPage::A4,
             landscape: true,
             format: SheetFormat::Pdf,
-            dpi: 200,
+            dpi: 150,
             image_width: 3840,
             theme: SheetTheme::Dark,
             title: "{film}".into(),
@@ -192,14 +192,67 @@ pub struct UiSettings {
     pub scope: ScopeKind,
     /// Bande au-dessus de la timeline : code-barre, vignettes du film ou rien.
     pub strip: StripMode,
-    /// Thème de l'interface.
+    /// Thème de l'interface (ne s'applique qu'au skin Studio : les autres fixent leur propre luminosité).
     pub theme: Theme,
+    /// Habillage de l'interface. Une valeur inconnue (version plus récente) redonne Studio
+    /// au lieu de rejeter tout le fichier de réglages.
+    #[serde(deserialize_with = "skin_or_default")]
+    pub skin: Skin,
+    /// Décor du skin (rayures, barres de couleur, trame) ; les couleurs restent.
+    pub effects: bool,
+    /// Couleur d'accent du skin Studio (les autres skins gardent la leur).
+    /// Une valeur inconnue redonne l'or, sans rejeter le fichier.
+    #[serde(deserialize_with = "accent_or_default")]
+    pub accent: Accent,
+    /// Son de la visionneuse coupé.
+    pub muted: bool,
 }
 
 impl Default for UiSettings {
     fn default() -> Self {
-        Self { scopes_open: false, scope: ScopeKind::Waveform, strip: StripMode::Barcode, theme: Theme::Dark }
+        Self {
+            scopes_open: false,
+            scope: ScopeKind::Waveform,
+            strip: StripMode::Barcode,
+            theme: Theme::Dark,
+            skin: Skin::Studio,
+            effects: true,
+            accent: Accent::Gold,
+            muted: false,
+        }
     }
+}
+
+/// Habillage de l'interface. Ne touche jamais la visionneuse, les scopes ni les fichiers exportés.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Skin {
+    #[default]
+    Studio,
+    Atomic,
+    Mission,
+}
+
+/// Couleur d'accent du skin Studio. L'or est celui des versions 0.5.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Accent {
+    #[default]
+    Gold,
+    Coral,
+    Teal,
+    Blue,
+}
+
+fn accent_or_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Accent, D::Error> {
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
+}
+
+fn skin_or_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Skin, D::Error> {
+    // Lu comme une valeur JSON quelconque : ni chaîne inconnue ni type inattendu ne fait échouer le fichier.
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
 }
 
 /// Thème de l'interface (les écrans d'image restent sombres dans les deux).
@@ -332,7 +385,12 @@ impl Settings {
         self.overlay = self.overlay.sanitized();
         let sh = &mut self.sheet;
         sh.columns = sh.columns.clamp(1, 12);
-        sh.dpi = sh.dpi.clamp(72, 600);
+        // Deux résolutions : écran (150 dpi, PDF qui s'ouvre et se parcourt vite) ou impression (300).
+        sh.dpi = if sh.dpi >= 225 { 300 } else { 150 };
+        // Un PDF est toujours en pages : une page géante est lente et pénible à parcourir.
+        if sh.format == SheetFormat::Pdf && sh.page == SheetPage::Image {
+            sh.page = SheetPage::A4;
+        }
         sh.image_width = sh.image_width.clamp(640, 16_000);
         sh.title = sh.title.chars().filter(|c| !c.is_control()).take(200).collect();
         if let Some(v) = &mut self.updates.skipped {
@@ -388,6 +446,67 @@ mod tests {
         s.palette.count = 8;
         save(&p, &s).unwrap();
         assert_eq!(load(&p), s);
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    #[test]
+    fn skin_par_defaut_aller_retour_et_valeur_inconnue() {
+        // Fichier d'avant les skins : Studio, décor actif, rien d'autre ne change.
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"theme":"light","strip":"frames"}}"#).unwrap();
+        assert_eq!(old.ui.skin, Skin::Studio);
+        assert!(old.ui.effects);
+        assert_eq!(old.ui.theme, Theme::Light);
+        assert_eq!(old.quality, 88);
+
+        let p = tmp("skin.json");
+        let mut s = Settings::default();
+        s.ui.skin = Skin::Mission;
+        s.ui.effects = false;
+        save(&p, &s).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains(r#""skin": "mission""#), "{text}");
+        assert_eq!(load(&p), s);
+
+        // Skin d'une version plus récente, ou mauvais type : Studio, et le reste du fichier est gardé.
+        for bad in [r#""chrome""#, "42", "null", r#"{"x":1}"#, r#""Atomic""#] {
+            let json = format!(r#"{{"quality":77,"ui":{{"skin":{bad},"effects":false}}}}"#);
+            std::fs::write(&p, json).unwrap();
+            let l = load(&p);
+            assert_eq!(l.ui.skin, Skin::Studio, "{bad}");
+            assert!(!l.ui.effects, "{bad}");
+            assert_eq!(l.quality, 77, "le reste du fichier doit survivre à {bad}");
+        }
+        for (txt, skin) in [("studio", Skin::Studio), ("atomic", Skin::Atomic), ("mission", Skin::Mission)] {
+            std::fs::write(&p, format!(r#"{{"ui":{{"skin":"{txt}"}}}}"#)).unwrap();
+            assert_eq!(load(&p).ui.skin, skin);
+        }
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    #[test]
+    fn accent_et_son_par_defaut_aller_retour_et_valeur_inconnue() {
+        // Fichier d'avant le choix d'accent : or, son actif.
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"skin":"atomic"}}"#).unwrap();
+        assert_eq!(old.ui.accent, Accent::Gold);
+        assert!(!old.ui.muted);
+        assert_eq!(old.ui.skin, Skin::Atomic);
+
+        let p = tmp("accent.json");
+        let mut s = Settings::default();
+        s.ui.accent = Accent::Coral;
+        s.ui.muted = true;
+        save(&p, &s).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains(r#""accent": "coral""#), "{text}");
+        assert_eq!(load(&p), s);
+
+        for bad in [r#""magenta""#, "3", "null", r#""Gold""#] {
+            std::fs::write(&p, format!(r#"{{"quality":77,"ui":{{"accent":{bad},"muted":true}}}}"#)).unwrap();
+            let l = load(&p);
+            assert_eq!(l.ui.accent, Accent::Gold, "{bad}");
+            assert!(l.ui.muted, "{bad}");
+            assert_eq!(l.quality, 77, "le reste du fichier doit survivre à {bad}");
+        }
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 
@@ -449,15 +568,25 @@ mod tests {
         )
         .unwrap();
         let s = s.sanitized();
-        assert_eq!((s.sheet.columns, s.sheet.dpi), (12, 72));
+        assert_eq!((s.sheet.columns, s.sheet.dpi), (12, 150));
         assert_eq!(s.export.format, ImageFormat::Png);
         assert_eq!(s.export.color, ColorProfile::Srgb);
         assert_eq!(s.export.timecode, TimecodeMode::Zero);
         assert_eq!(s.updates.skipped.as_deref(), Some("0.5.0script"));
         assert!(s.updates.check_at_startup);
-        // A4 paysage à 200 dpi.
+        // A4 paysage à 150 dpi (écran, par défaut).
         let a4 = SheetSettings::default().page_pixels().unwrap();
-        assert_eq!(a4, (2339, 1654));
+        assert_eq!(a4, (1754, 1240));
+        // Résolution : écran ou impression, rien d'autre.
+        for (asked, kept) in [(72, 150), (200, 150), (224, 150), (225, 300), (600, 300)] {
+            let s = Settings { sheet: SheetSettings { dpi: asked, ..Default::default() }, ..Default::default() }.sanitized();
+            assert_eq!(s.sheet.dpi, kept, "{asked} dpi");
+        }
+        // PDF : jamais une image géante, toujours des pages.
+        let pdf = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Pdf, ..Default::default() }, ..Default::default() };
+        assert_eq!(pdf.sanitized().sheet.page, SheetPage::A4);
+        let jpeg = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Jpeg, ..Default::default() }, ..Default::default() };
+        assert_eq!(jpeg.sanitized().sheet.page, SheetPage::Image);
         assert_eq!(SheetSettings { page: SheetPage::Image, ..Default::default() }.page_pixels(), None);
     }
 }

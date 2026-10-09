@@ -279,11 +279,12 @@ else {
   Info 'LICENSE.txt and THIRD_PARTY_LICENSES.txt added to the installer.'
 }
 
-$app = Join-Path $Root 'src\App.tsx'
+# Since v0.7 the license line is in Preferences > About & licenses (src\PrefsDialog.tsx).
+$app = Join-Path $Root 'src\PrefsDialog.tsx'
 $a = Load $app
-$legalText = "Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv$lgpl. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt " + '{IS_MAC ? "inside the app (Photogramme.app/Contents/Resources)" : "in the installation folder"}.'
+$legalText = "Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv$lgpl, and the Barlow, Instrument Sans, Archivo, Space Mono and IBM Plex fonts under the SIL Open Font License 1.1. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt " + '{IS_MAC ? "inside the app (Photogramme.app/Contents/Resources)" : "in the installation folder"}.'
 $re = [regex]'<p className="legal">[^<]*</p>'
-if ($re.Matches($a).Count -ne 1) { Fail 'App.tsx: the license line from prepare-release.ps1 was not found.' }
+if ($re.Matches($a).Count -ne 1) { Fail 'PrefsDialog.tsx: the license line (Preferences > About & licenses) was not found.' }
 $a2 = $re.Replace($a, ('<p className="legal">' + $legalText + '</p>'), 1)
 if ($a2 -ne $a) { Save $app $a2; Info 'License line updated.' } else { Info 'License line already up to date.' }
 

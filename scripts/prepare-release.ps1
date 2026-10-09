@@ -4,8 +4,8 @@
 #  1. Reads the FFmpeg actually bundled (version, build options). Stops if it is a GPL or non-free build.
 #  2. Writes THIRD_PARTY_NOTICES.txt: version, build options, link to the exact FFmpeg source, license text.
 #  3. Ships that file with the installer (tauri.conf.json > bundle > resources).
-#  4. Adds the line required by FFmpeg ("uses libraries from the FFmpeg project under the LGPL")
-#     at the bottom of the SETTINGS tab.
+#  4. Checks the line required by FFmpeg ("uses libraries from the FFmpeg project under the LGPL")
+#     in Preferences > About & licenses (src\PrefsDialog.tsx since v0.7).
 #  5. Writes a new README.md (the GitHub page).
 #  6. Downloads the matching FFmpeg source archive into release-extras\ (to attach to future releases).
 #  7. Type-checks, then commits and pushes.
@@ -173,29 +173,17 @@ if ($j.Contains('THIRD_PARTY_NOTICES.txt')) {
 }
 
 # ---------------------------------------------------------------------------
-Step '4. License line in the app (bottom of the SETTINGS tab)'
-$app = Join-Path $Root 'src\App.tsx'
-$css = Join-Path $Root 'src\styles.css'
+Step '4. License line in the app (Preferences > About & licenses)'
+# Since v0.7 the line lives in the Preferences dialog (src\PrefsDialog.tsx), not at the bottom of a
+# SETTINGS tab (that tab no longer exists). The line is only checked here, never injected: code
+# written into a component by a script would not survive the next refactor.
+$app = Join-Path $Root 'src\PrefsDialog.tsx'
 $a = [IO.File]::ReadAllText($app)
-if ($a.Contains('className="legal"')) {
-  Info 'Already there.'
-} elseif (([regex]::Matches($a, '</aside>')).Count -ne 1) {
-  Warn 'Could not find a single </aside> in App.tsx: line not added.'
-  $manual += 'license line in App.tsx'
+if (([regex]::Matches($a, '<p className="legal">[^<]*FFmpeg project under the LGPL')).Count -eq 1) {
+  Info 'Present in PrefsDialog.tsx.'
 } else {
-  $legal = '{tab === "settings" && (' + "`n" +
-           '            <p className="legal">This software uses libraries from the FFmpeg project under the LGPLv' + $lgpl +
-           '. Version, build options and source code: THIRD_PARTY_NOTICES.txt in the installation folder.</p>' + "`n" +
-           '          )}' + "`n" + '        </aside>'
-  $a = $a.Replace('</aside>', $legal)
-  Save $app $a
-  $c = [IO.File]::ReadAllText($css)
-  if (-not $c.Contains('.legal {')) {
-    $c = $c.TrimEnd() + "`n`n/* FFmpeg license line, bottom of the SETTINGS tab */`n" +
-         ".legal { margin: 0; padding: 10px 20px 12px; border-top: 1px solid var(--line); font-size: 11px; line-height: 1.45; color: var(--text-3); }`n"
-    Save $css $c
-  }
-  Info 'Added.'
+  Warn 'The FFmpeg license line was not found in src\PrefsDialog.tsx (Preferences > About & licenses).'
+  $manual += 'FFmpeg license line in src\PrefsDialog.tsx'
 }
 
 # ---------------------------------------------------------------------------

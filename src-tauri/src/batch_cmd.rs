@@ -14,6 +14,7 @@ use photogramme_core::batch::{OutSize, PixelFormat};
 use photogramme_core::color::{convert_in_place, icc_profile};
 use photogramme_core::naming::{film_stem, unique_dir, unique_path};
 use photogramme_core::settings::SheetFormat;
+use photogramme_core::batch::InOrder;
 use photogramme_core::sheet::{self, JpegPage};
 use photogramme_core::{encode_image, export_csv, packet, plan_items, BatchRequest, Chroma, CsvRow, FrameRange, ImageFormat};
 use serde::{Deserialize, Serialize};
@@ -128,6 +129,7 @@ pub async fn batch_start(
         height: size.height,
         group: group.clone(),
         frames: tauri::async_runtime::Mutex::new(rx),
+        order: tauri::async_runtime::Mutex::new((kind == JobKind::Sheet).then(|| InOrder::new(items.iter().map(|i| i.frame).collect()))),
         producer_error: producer_error.clone(),
         written: Mutex::new(Vec::new()),
         palettes: Mutex::new(HashMap::new()),
@@ -215,9 +217,20 @@ pub async fn batch_pull(state: State<'_, AppState>, job: u64) -> Result<Response
     let j = current_job(&state, job)?;
     let next = {
         let mut guard = j.frames.lock().await;
-        match guard.as_mut() {
-            Some(rx) => rx.recv().await,
-            None => None,
+        let mut order = j.order.lock().await;
+        match (guard.as_mut(), order.as_mut()) {
+            (None, _) => None,
+            (Some(rx), None) => rx.recv().await,
+            // Planche contact : on attend l'image suivante du film, en rangeant celles qui la devancent.
+            (Some(rx), Some(o)) => loop {
+                if let Some(f) = o.take_ready() {
+                    break Some(f);
+                }
+                match rx.recv().await {
+                    Some(f) => o.put(f.item.frame, f),
+                    None => break o.take_rest(),
+                }
+            },
         }
     };
     let Some(f) = next else {

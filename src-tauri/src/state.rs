@@ -4,6 +4,7 @@ use crate::jobs::{JobEvent, RawFrame, Written};
 use crate::runner::ProcessGroup;
 use photogramme_core::analysis::Analysis;
 use photogramme_core::cuts::ImportedCuts;
+use photogramme_core::batch::InOrder;
 use photogramme_core::sheet::JpegPage;
 use photogramme_core::{Settings, VideoInfo};
 use std::collections::HashMap;
@@ -43,6 +44,8 @@ pub struct BatchJob {
     pub group: ProcessGroup,
     /// Mode composition : images décodées en attente d'être tirées par l'interface.
     pub frames: tauri::async_runtime::Mutex<Option<Receiver<RawFrame>>>,
+    /// Planche contact : images remises dans l'ordre du film (décodage en parallèle).
+    pub order: tauri::async_runtime::Mutex<Option<InOrder<RawFrame>>>,
     pub producer_error: Arc<Mutex<Option<String>>>,
     pub written: Mutex<Vec<Written>>,
     /// Palettes calculées au moment du tirage (CSV), par image.

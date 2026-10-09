@@ -44,38 +44,45 @@ export function captionLines(s: SheetSettings): number {
   return first + (s.showClip ? 1 : 0);
 }
 
+/**
+ * Plafonds d'une page : au-delà, le moteur de l'interface (WebView2) peut manquer de
+ * mémoire et s'arrêter (écran noir). 80 Mpx couvre l'A3 à 600 dpi.
+ */
+export const MAX_SIDE = 16384;
+export const MAX_PIXELS = 80e6;
+
 export function sheetLayout(s: SheetSettings, frameW: number, frameH: number, count: number): SheetLayout {
   const fixed = pagePixels(s);
-  const pageW = fixed ? fixed[0] : Math.max(640, Math.round(s.imageWidth));
-  const u = pageW / 100;
   const cols = Math.max(1, Math.min(12, Math.round(s.columns)));
+  // Image libre : jamais plus large que MAX_SIDE, ni que ce qui agrandirait les images du film.
+  const share = (1 - 0.06 - (cols - 1) * 0.014) / cols;
+  const pageW = fixed
+    ? fixed[0]
+    : Math.min(MAX_SIDE, Math.max(640, Math.round(s.imageWidth)), Math.max(640, Math.ceil(frameW / share)));
+  const u = pageW / 100;
   const margin = Math.round(3 * u);
   const titleSize = Math.max(10, Math.round(2.1 * u));
   const fontSize = Math.max(8, Math.round((cols <= 3 ? 1.25 : cols <= 6 ? 1.05 : 0.85) * u));
   const headerH = Math.round(titleSize * 2.6);
   const footerH = Math.round(fontSize * 2);
   const gap = Math.round(1.4 * u);
-  const cellW = Math.max(16, Math.floor((pageW - 2 * margin - (cols - 1) * gap) / cols));
+  const cellW = Math.max(16, Math.min(fixed ? Infinity : frameW, Math.floor((pageW - 2 * margin - (cols - 1) * gap) / cols)));
   const imgH = Math.round((cellW * frameH) / Math.max(1, frameW));
   const lines = captionLines(s);
   const captionH = lines ? Math.round(fontSize * (0.5 + 1.35 * lines)) : Math.round(fontSize * 0.4);
   const paletteH = s.showPalette ? Math.max(4, Math.round(cellW * 0.06)) : 0;
   const cellH = imgH + paletteH + captionH;
-  const usable = (h: number) => h - 2 * margin - headerH - footerH;
-  if (fixed) {
-    const pageH = fixed[1];
-    const rows = Math.max(1, Math.floor((usable(pageH) + gap) / (cellH + gap)));
-    const perPage = rows * cols;
-    return {
-      pageW, pageH, margin, headerH, footerH, cols, rows, perPage, pages: Math.max(1, Math.ceil(count / perPage)),
-      gap, cellW, imgH, captionH, paletteH, cellH, fontSize, titleSize,
-    };
-  }
-  // Image libre : une seule page, aussi haute que nécessaire.
-  const rows = Math.max(1, Math.ceil(count / cols));
-  const pageH = 2 * margin + headerH + footerH + rows * cellH + (rows - 1) * gap;
+  const chrome = 2 * margin + headerH + footerH;
+  const rowsIn = (h: number) => Math.max(1, Math.floor((h - chrome + gap) / (cellH + gap)));
+  // Page imposée : autant de lignes qu'elle en contient. Image libre : aussi haute que
+  // nécessaire, mais coupée en plusieurs images au-delà des plafonds.
+  const rows = fixed
+    ? rowsIn(fixed[1])
+    : Math.min(Math.ceil(count / cols), rowsIn(Math.min(MAX_SIDE, Math.floor(MAX_PIXELS / pageW))));
+  const pageH = fixed ? fixed[1] : chrome + rows * cellH + (rows - 1) * gap;
+  const perPage = rows * cols;
   return {
-    pageW, pageH, margin, headerH, footerH, cols, rows, perPage: rows * cols, pages: 1,
+    pageW, pageH, margin, headerH, footerH, cols, rows, perPage, pages: Math.max(1, Math.ceil(count / perPage)),
     gap, cellW, imgH, captionH, paletteH, cellH, fontSize, titleSize,
   };
 }

@@ -157,8 +157,73 @@ impl FrameSplitter {
     }
 }
 
+/// Remise dans l'ordre du film d'images décodées en parallèle (plusieurs FFmpeg
+/// sur des morceaux différents) : la planche contact doit suivre le film.
+/// L'attente est bornée à un groupe de décodage (`MAX_PER_GROUP` images).
+#[derive(Debug)]
+pub struct InOrder<T> {
+    order: Vec<u64>,
+    next: usize,
+    pending: std::collections::HashMap<u64, T>,
+}
+
+impl<T> InOrder<T> {
+    /// `order` : les numéros d'image dans l'ordre voulu (chacun une fois).
+    pub fn new(mut order: Vec<u64>) -> Self {
+        order.dedup();
+        Self { order, next: 0, pending: std::collections::HashMap::new() }
+    }
+
+    /// Range une image arrivée, quel que soit son rang.
+    pub fn put(&mut self, frame: u64, value: T) {
+        self.pending.insert(frame, value);
+    }
+
+    /// L'image attendue, si elle est arrivée.
+    pub fn take_ready(&mut self) -> Option<T> {
+        let v = self.pending.remove(self.order.get(self.next)?)?;
+        self.next += 1;
+        Some(v)
+    }
+
+    /// Fin du décodage : ce qui reste, dans l'ordre (ne sert que si une image manquait).
+    pub fn take_rest(&mut self) -> Option<T> {
+        while self.next < self.order.len() {
+            let f = self.order[self.next];
+            self.next += 1;
+            if let Some(v) = self.pending.remove(&f) {
+                return Some(v);
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remise_dans_l_ordre_du_film() {
+        // Deux FFmpeg en parallèle : #011 (100, 102, 104) et #015 (250, 253, 256) entrelacés.
+        let mut o = super::InOrder::new(vec![100, 102, 104, 250, 253, 256]);
+        let mut out = Vec::new();
+        for f in [250, 100, 253, 102, 256, 104] {
+            o.put(f, f);
+            while let Some(v) = o.take_ready() {
+                out.push(v);
+            }
+        }
+        assert_eq!(out, vec![100, 102, 104, 250, 253, 256]);
+        assert_eq!(o.take_ready(), None);
+        // Une image manquante ne bloque pas la fin : le reste sort dans l'ordre.
+        let mut o = super::InOrder::new(vec![1, 2, 3]);
+        o.put(3, 3);
+        o.put(1, 1);
+        assert_eq!(o.take_ready(), Some(1));
+        assert_eq!(o.take_ready(), None);
+        assert_eq!(o.take_rest(), Some(3));
+        assert_eq!(o.take_rest(), None);
+    }
+
     use super::*;
 
     fn info() -> VideoInfo {

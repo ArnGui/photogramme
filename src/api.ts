@@ -22,6 +22,8 @@ export interface ProbeFrame {
 }
 
 export const api = {
+  /** Signe de vie pour le guetteur Rust (message natif si l'interface s'arrête). */
+  heartbeat: (visible: boolean) => invoke<void>("heartbeat", { visible }),
   pickVideo: () => invoke<VideoInfo | null>("pick_video"),
   currentVideo: () => invoke<VideoInfo | null>("current_video"),
 

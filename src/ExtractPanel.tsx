@@ -4,12 +4,32 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { thumbUrl } from "./api";
-import { NumberField } from "./fields";
+import { Choice, NumberField } from "./fields";
 import { GPU_NAME } from "./platform";
-import { PickField } from "./SettingsPanel";
 import type { DisplayShot } from "./shotlist";
 import { frameToTc, tcOf } from "./timecode";
-import type { AnalysisSummary, BatchMode, FrameRange, ImportedCuts, Settings, ShotSource, VideoInfo } from "./types";
+import type { AnalysisSummary, BatchMode, FrameRange, ImportedCuts, Pick, Settings, ShotSource, VideoInfo } from "./types";
+
+/** Réglages du mode « par plan » ouverts ou repliés (confort de chaque poste). */
+const OPEN_KEY = "photogramme.extractSettingsOpen";
+
+export function PickField({ pick, onChange }: { pick: Pick; onChange: (p: Pick) => void }) {
+  const count = pick.mode === "spread" ? pick.count : 3;
+  return (
+    <>
+      <Choice
+        label="FRAME KEPT PER SHOT"
+        value={pick.mode}
+        options={[["first", "First"], ["middle", "Middle"], ["last", "Last"], ["spread", "N per shot"]]}
+        onChange={(m) => onChange(m === "spread" ? { mode: "spread", count } : { mode: m })}
+      />
+      {pick.mode === "spread" && (
+        <NumberField label="Frames per shot" value={count} min={1} max={20}
+          onChange={(c) => onChange({ mode: "spread", count: Math.round(c) })} />
+      )}
+    </>
+  );
+}
 
 export interface JobState {
   kind: "analysis" | "export" | "sheet";
@@ -125,14 +145,35 @@ export function ExtractPanel(props: {
     el?.scrollIntoView({ block: "nearest" });
   }, [props.currentShot]);
 
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const saveSettingsOpen = (open: boolean) => {
+    setSettingsOpen(open);
+    try {
+      localStorage.setItem(OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* stockage indisponible : l'état vaut pour la session */
+    }
+  };
+  const pick = s.shots.pick;
+  const settingsSummary = [
+    source === "imported" ? "Edit list" : `Detection · ${s.shots.threshold} · ${s.shots.minSeconds} s`,
+    pick.mode === "spread" ? `${pick.count} per shot` : pick.mode,
+  ].join(" · ");
+
   const [showNote, setShowNote] = useState(true);
   useEffect(() => setShowNote(true), [analysis?.id, imported]);
 
   const busy = job !== null;
   const ext = s.export.format === "png" ? "PNG" : "JPEG";
   const exportLabel = props.output === "sheet"
-    ? `MAKE CONTACT SHEET${props.sheetPages ? ` · ${props.sheetPages} PAGE${props.sheetPages > 1 ? "S" : ""}` : ""}`
-    : `EXPORT ${props.plannedCount ? props.plannedCount.toLocaleString("en") : ""} ${ext}`;
+    ? `Make the contact sheet${props.sheetPages ? ` · ${props.sheetPages} page${props.sheetPages > 1 ? "s" : ""}` : ""}`
+    : `Export ${props.plannedCount ? `${props.plannedCount.toLocaleString("en")} ` : ""}${ext} still${props.plannedCount === 1 ? "" : "s"}`;
 
   return (
     <div className="extract">
@@ -145,6 +186,14 @@ export function ExtractPanel(props: {
 
       {mode === "shots" && (
         <>
+          {/* Réglages repliables : la liste des plans passe devant. Toujours ouverts tant qu'il n'y a pas de liste. */}
+          <details className="section extract-settings" open={settingsOpen || !haveList}
+            onToggle={(e) => haveList && saveSettingsOpen(e.currentTarget.open)}>
+            <summary title={settingsOpen || !haveList ? "Hide the settings" : "Show the settings"}>
+              <span className="section-title">SETTINGS</span>
+              <span className="section-summary mono">{settingsSummary}</span>
+            </summary>
+            <div className="section-body">
           <div className="field">
             <span className="label">CUTS FROM</span>
             <div className="pills" role="group" aria-label="Cuts from">
@@ -183,7 +232,7 @@ export function ExtractPanel(props: {
                   Import the cuts of your edit: an EDL (CMX 3600), an OpenTimelineIO file, a Final Cut Pro 7 XML or an FCPXML
                   exported from Resolve, Premiere or Final Cut. The cuts are then exact, no detection needed.
                 </p>
-                <button type="button" className="btn-primary" disabled={busy} onClick={props.onImport}>IMPORT AN EDIT LIST</button>
+                <button type="button" className="btn-primary" disabled={busy} onClick={props.onImport}>Import an edit list</button>
               </div>
             )
           )}
@@ -194,7 +243,7 @@ export function ExtractPanel(props: {
                 One pass over the whole film detects the cuts (FFmpeg <span className="mono">scdet</span>), builds the thumbnails and
                 the color barcode. {info.nvdecCompatible ? `Decoded by the GPU (${GPU_NAME}) when available.` : "This file will be decoded on the CPU."}
               </p>
-              <button type="button" className="btn-primary" disabled={busy} onClick={props.onAnalyze}>ANALYZE THE FILM</button>
+              <button type="button" className="btn-primary" disabled={busy} onClick={props.onAnalyze}>Analyze the film</button>
             </div>
           )}
 
@@ -217,9 +266,22 @@ export function ExtractPanel(props: {
             <>
               {source === "detect" && (
                 <NumberField label="Threshold" value={s.shots.threshold} min={3} max={60} step={0.5}
-                  onChange={(threshold) => onChange({ ...s, shots: { ...s.shots, threshold } })} />
+                  onChange={(threshold) => onChange({ ...s, shots: { ...s.shots, threshold } })}
+                  hint="Lower = more cuts. 10 is FFmpeg's default." />
+              )}
+              {source === "detect" && (
+                <NumberField label="Minimum shot length" unit="s" value={s.shots.minSeconds} min={0} max={10} step={0.1}
+                  onChange={(minSeconds) => onChange({ ...s, shots: { ...s.shots, minSeconds } })}
+                  hint="Shorter shots are merged: ignores flashes and very fast cuts." />
               )}
               <PickField pick={s.shots.pick} onChange={(pick) => onChange({ ...s, shots: { ...s.shots, pick } })} />
+            </>
+          )}
+            </div>
+          </details>
+
+          {haveList && (
+            <>
               <div className="row list-tools small">
                 <span className="muted">{checked}/{shots.length} selected</span>
                 <button type="button" className="btn-link" onClick={() => props.onSetAll(true)}>All</button>
@@ -270,6 +332,9 @@ export function ExtractPanel(props: {
               {mode === "shots" && !haveList
                 ? source === "imported" ? "Import an edit list to list its shots" : "Analyze the film to list its shots"
                 : props.planError ?? (props.plannedCount != null ? `${props.plannedCount.toLocaleString("en")} frames` : "…")}
+              {/* Plusieurs images par plan : le calcul est dit, le total n'a rien de mystérieux. */}
+              {mode === "shots" && haveList && pick.mode === "spread" && props.plannedCount != null && !props.planError
+                ? ` (${checked} shot${checked > 1 ? "s" : ""} × ${pick.count})` : ""}
               {props.output === "stills" && s.export.overlay ? " · with overlay" : ""}
               {props.output === "stills" && s.export.subfolder ? " · in a subfolder" : ""}
               {props.output === "sheet" ? ` · ${s.sheet.columns} columns · ${s.sheet.format.toUpperCase()}` : ""}
