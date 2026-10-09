@@ -265,3 +265,13 @@ test("without a shot list the settings stay open: analyzing is one click away", 
   await expect(page.locator("details.extract-settings")).toHaveAttribute("open", "");
   await expect(page.getByRole("button", { name: "Analyze the film" })).toBeVisible();
 });
+
+test("with several frames per shot, the total says how it is computed", async ({ page }) => {
+  await boot(page, { analysis: true });
+  await openSettings(page);
+  await page.getByRole("group", { name: "FRAME KEPT PER SHOT" }).getByRole("button", { name: "N per shot" }).click();
+  await page.getByRole("button", { name: "None" }).click();
+  await page.locator(".shot input[type=checkbox]").nth(0).check();
+  await page.locator(".shot input[type=checkbox]").nth(1).check();
+  await expect(page.locator(".export-footer")).toContainText("(2 shots × 3)");
+});

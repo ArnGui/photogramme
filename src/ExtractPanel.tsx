@@ -332,6 +332,9 @@ export function ExtractPanel(props: {
               {mode === "shots" && !haveList
                 ? source === "imported" ? "Import an edit list to list its shots" : "Analyze the film to list its shots"
                 : props.planError ?? (props.plannedCount != null ? `${props.plannedCount.toLocaleString("en")} frames` : "…")}
+              {/* Plusieurs images par plan : le calcul est dit, le total n'a rien de mystérieux. */}
+              {mode === "shots" && haveList && pick.mode === "spread" && props.plannedCount != null && !props.planError
+                ? ` (${checked} shot${checked > 1 ? "s" : ""} × ${pick.count})` : ""}
               {props.output === "stills" && s.export.overlay ? " · with overlay" : ""}
               {props.output === "stills" && s.export.subfolder ? " · in a subfolder" : ""}
               {props.output === "sheet" ? ` · ${s.sheet.columns} columns · ${s.sheet.format.toUpperCase()}` : ""}
