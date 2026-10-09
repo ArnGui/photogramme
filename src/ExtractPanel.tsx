@@ -4,12 +4,29 @@
 
 import { memo, useEffect, useRef, useState } from "react";
 import { thumbUrl } from "./api";
-import { NumberField } from "./fields";
+import { Choice, NumberField } from "./fields";
 import { GPU_NAME } from "./platform";
-import { PickField } from "./SettingsPanel";
 import type { DisplayShot } from "./shotlist";
 import { frameToTc, tcOf } from "./timecode";
-import type { AnalysisSummary, BatchMode, FrameRange, ImportedCuts, Settings, ShotSource, VideoInfo } from "./types";
+import type { AnalysisSummary, BatchMode, FrameRange, ImportedCuts, Pick, Settings, ShotSource, VideoInfo } from "./types";
+
+export function PickField({ pick, onChange }: { pick: Pick; onChange: (p: Pick) => void }) {
+  const count = pick.mode === "spread" ? pick.count : 3;
+  return (
+    <>
+      <Choice
+        label="FRAME KEPT PER SHOT"
+        value={pick.mode}
+        options={[["first", "First"], ["middle", "Middle"], ["last", "Last"], ["spread", "N per shot"]]}
+        onChange={(m) => onChange(m === "spread" ? { mode: "spread", count } : { mode: m })}
+      />
+      {pick.mode === "spread" && (
+        <NumberField label="Frames per shot" value={count} min={1} max={20}
+          onChange={(c) => onChange({ mode: "spread", count: Math.round(c) })} />
+      )}
+    </>
+  );
+}
 
 export interface JobState {
   kind: "analysis" | "export" | "sheet";
@@ -131,8 +148,8 @@ export function ExtractPanel(props: {
   const busy = job !== null;
   const ext = s.export.format === "png" ? "PNG" : "JPEG";
   const exportLabel = props.output === "sheet"
-    ? `MAKE CONTACT SHEET${props.sheetPages ? ` · ${props.sheetPages} PAGE${props.sheetPages > 1 ? "S" : ""}` : ""}`
-    : `EXPORT ${props.plannedCount ? props.plannedCount.toLocaleString("en") : ""} ${ext}`;
+    ? `Make the contact sheet${props.sheetPages ? ` · ${props.sheetPages} page${props.sheetPages > 1 ? "s" : ""}` : ""}`
+    : `Export ${props.plannedCount ? `${props.plannedCount.toLocaleString("en")} ` : ""}${ext} still${props.plannedCount === 1 ? "" : "s"}`;
 
   return (
     <div className="extract">
@@ -183,7 +200,7 @@ export function ExtractPanel(props: {
                   Import the cuts of your edit: an EDL (CMX 3600), an OpenTimelineIO file, a Final Cut Pro 7 XML or an FCPXML
                   exported from Resolve, Premiere or Final Cut. The cuts are then exact, no detection needed.
                 </p>
-                <button type="button" className="btn-primary" disabled={busy} onClick={props.onImport}>IMPORT AN EDIT LIST</button>
+                <button type="button" className="btn-primary" disabled={busy} onClick={props.onImport}>Import an edit list</button>
               </div>
             )
           )}
@@ -194,7 +211,7 @@ export function ExtractPanel(props: {
                 One pass over the whole film detects the cuts (FFmpeg <span className="mono">scdet</span>), builds the thumbnails and
                 the color barcode. {info.nvdecCompatible ? `Decoded by the GPU (${GPU_NAME}) when available.` : "This file will be decoded on the CPU."}
               </p>
-              <button type="button" className="btn-primary" disabled={busy} onClick={props.onAnalyze}>ANALYZE THE FILM</button>
+              <button type="button" className="btn-primary" disabled={busy} onClick={props.onAnalyze}>Analyze the film</button>
             </div>
           )}
 
@@ -217,7 +234,13 @@ export function ExtractPanel(props: {
             <>
               {source === "detect" && (
                 <NumberField label="Threshold" value={s.shots.threshold} min={3} max={60} step={0.5}
-                  onChange={(threshold) => onChange({ ...s, shots: { ...s.shots, threshold } })} />
+                  onChange={(threshold) => onChange({ ...s, shots: { ...s.shots, threshold } })}
+                  hint="Lower = more cuts. 10 is FFmpeg's default." />
+              )}
+              {source === "detect" && (
+                <NumberField label="Minimum shot length" unit="s" value={s.shots.minSeconds} min={0} max={10} step={0.1}
+                  onChange={(minSeconds) => onChange({ ...s, shots: { ...s.shots, minSeconds } })}
+                  hint="Shorter shots are merged: ignores flashes and very fast cuts." />
               )}
               <PickField pick={s.shots.pick} onChange={(pick) => onChange({ ...s, shots: { ...s.shots, pick } })} />
               <div className="row list-tools small">

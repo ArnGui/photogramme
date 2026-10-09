@@ -4,28 +4,38 @@ import { api, CANCELLED, errorMessage } from "./api";
 import { composeToPixels, loadFonts, makeTokens, render } from "./compose";
 import { useDebounced, usePlayer } from "./hooks";
 import { parseSession, snapshot } from "./session";
-import { applyTheme, savedTheme } from "./theme";
+import { applyAppearance, effectiveTheme } from "./theme";
 import { buildShots, cutAt, mergeWithNext, selectedSpans, shotAt } from "./shotlist";
 import { drawPage, expandTitle, sheetLayout } from "./sheet";
 import type { SheetCell, SheetLayout } from "./sheet";
 import { checkSync } from "./sync";
-import { hasCommandKey, IS_MAC } from "./platform";
+import { hasCommandKey, IS_MAC, shortcut } from "./platform";
+import { shortcutBlocked } from "./keys";
 import { formatFps } from "./timecode";
 import {
-  BarcodeStrip, CapturesPanel, EmptyState, rangeOf, ScopesPanel, TabBar, Timeline, Toast, TopBar, Transport, UpdateBanner,
-  Viewer, Warnings,
+  BarcodeStrip, EmptyState, GalleryPanel, rangeOf, ScopesPanel, StatusBar, Timeline, TimelinePanel, Toast, TopBar, Transport,
+  UpdateBanner, Viewer, Warnings,
 } from "./components";
 import type { Compare, PreviewSize, ToastState, Zoom } from "./components";
 import { ExtractPanel } from "./ExtractPanel";
 import type { JobState, Output } from "./ExtractPanel";
-import { SettingsPanel } from "./SettingsPanel";
-import type { UpdateState } from "./SettingsPanel";
+import { LookPanel } from "./LookPanel";
+import type { LayerId } from "./LookPanel";
+import { OutputPanel } from "./OutputPanel";
+import { PrefsDialog } from "./PrefsDialog";
+import type { PrefsSection, UpdateState } from "./PrefsDialog";
+import { CommandPalette, ShortcutsDialog } from "./CommandPalette";
+import type { Command } from "./commands";
+import type { SessionTab } from "./session";
+import { SKINS } from "./theme";
 import type {
   AnalysisSummary, AppInfo, BatchRequest, CaptureResult, FrameData, ImportedCuts, JobEvent, OverlayPreset, ScopeKind,
   Settings, ShotSource, ShotView, TabsView, UpdateInfo, VideoInfo,
 } from "./types";
 
-type Tab = "extract" | "captures" | "settings";
+type Tab = SessionTab;
+
+const TABS: [Tab, string][] = [["extract", "EXTRACT"], ["gallery", "GALLERY"], ["look", "LOOK"], ["output", "OUTPUT"]];
 
 const imageOf = (f: FrameData) => new ImageData(f.rgba as Uint8ClampedArray<ArrayBuffer>, f.width, f.height);
 
@@ -44,7 +54,6 @@ type SyncState = { status: "pending" | "ok" | "unavailable" | "corrected"; tries
 export default function App() {
   const [rawInfo, setInfo] = useState<VideoInfo | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
-  const [savedVersion, setSavedVersion] = useState(0);
   const [presets, setPresets] = useState<OverlayPreset[]>([]);
   const [captures, setCaptures] = useState<CaptureResult[]>([]);
   const [busy, setBusy] = useState(false);
@@ -78,6 +87,9 @@ export default function App() {
   const [installing, setInstalling] = useState<{ done: number; total: number | null; installing: boolean } | null>(null);
   const [tabs, setTabs] = useState<TabsView>({ active: null, tabs: [] });
   const [switching, setSwitching] = useState<string | null>(null);
+  const [prefs, setPrefs] = useState<{ open: boolean; section: PrefsSection }>({ open: false, section: "appearance" });
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   /** Film chargé (chemin), et film dont le projet est rechargé : on n'enregistre qu'après. */
   const filmRef = useRef<string | null>(null);
   const sessionRef = useRef<string | null>(null);
@@ -109,7 +121,7 @@ export default function App() {
     if (s) {
       saving.current = saving.current.then(() =>
         api.updateSettings(s).then(
-          () => setSavedVersion((v) => v + 1),
+          () => {},
           (e) => {
             fail(e);
             return api.getSettings().then(setSettings);
@@ -222,6 +234,11 @@ export default function App() {
 
   /* ───── Plans ───── */
 
+  // Réglages enregistrés dont dépendent, côté Rust, les vignettes des plans (image retenue)
+  // et l'image exacte (palette, profil couleur, timecode). Les autres réglages (overlay,
+  // planche, fichiers…) ne relancent ni FFmpeg ni la liste des plans.
+  const pickKey = settings ? JSON.stringify(settings.shots.pick) : "";
+  const frameKey = settings ? JSON.stringify([settings.palette, settings.export.color, settings.export.timecode]) : "";
   const threshold = useDebounced(settings?.shots.threshold ?? 10, 120);
   const minSeconds = useDebounced(settings?.shots.minSeconds ?? 0.5, 120);
   const extraCuts = useMemo(() => [...addedCuts].sort((a, b) => a - b), [addedCuts]);
@@ -240,7 +257,7 @@ export default function App() {
     return () => {
       alive = false;
     };
-  }, [analysis, imported, source, threshold, minSeconds, extraCuts, savedVersion, flush, fail]);
+  }, [analysis, imported, source, threshold, minSeconds, extraCuts, pickKey, flush, fail]);
 
   const shots = useMemo(() => buildShots(rawShots, removedCuts, unchecked, addedCuts), [rawShots, removedCuts, unchecked, addedCuts]);
   const cuts = useMemo(() => shots.slice(1).filter((s) => !s.manual).map((s) => s.start), [shots]);
@@ -480,7 +497,8 @@ export default function App() {
         setJob((j) => (j ? { ...j, total: started.total } : j));
         if (compose) void composeLoop(started.job, s, info);
       }
-      setTab((t) => (t === "settings" ? "extract" : t));
+      // La progression s'affiche dans Extract ; Gallery montre les images qui arrivent.
+      setTab((t) => (t === "gallery" ? t : "extract"));
     } catch (e) {
       setJob(null);
       fail(e);
@@ -555,8 +573,8 @@ export default function App() {
     return () => {
       alive = false;
     };
-    // savedVersion : la palette et la conversion dépendent des réglages enregistrés.
-  }, [wantStill, info, settledFrame, savedVersion, flush, fail]);
+    // frameKey : la palette, la conversion et le timecode dépendent des réglages enregistrés (flush d'abord).
+  }, [wantStill, info, settledFrame, frameKey, flush, fail]);
 
   const setReference = useCallback(async () => {
     if (!info) return;
@@ -573,9 +591,9 @@ export default function App() {
   // The preview always draws the overlay so every overlay and palette setting is visible live,
   // even when "Apply the overlay to exports" is off (a note on the preview says so).
   const effectivePreset = settings ? settings.overlay : null;
-  // Opening the SETTINGS tab turns the preview on: settings are edited while watching the result.
+  // Opening the LOOK tab turns the preview on: the look is edited while watching the result.
   useEffect(() => {
-    if (tab === "settings") setPreview(true);
+    if (tab === "look") setPreview(true);
   }, [tab]);
   useEffect(() => {
     const c = canvasRef.current;
@@ -799,22 +817,41 @@ export default function App() {
     if (settings) changeSettings({ ...settings, ui: { ...settings.ui, ...patch } });
   }, [settings, changeSettings]);
 
-  // Thème : suit les réglages (enregistrés côté Rust), copié localement pour le prochain lancement.
+  // Apparence : suit les réglages (enregistrés côté Rust), copiée localement pour le prochain lancement.
   const theme = settings?.ui.theme;
+  const skin = settings?.ui.skin;
+  const effects = settings?.ui.effects;
   useEffect(() => {
-    if (theme) applyTheme(theme);
-  }, [theme]);
+    if (theme && skin && effects !== undefined) applyAppearance({ theme, skin, effects });
+  }, [theme, skin, effects]);
+  const openPrefs = useCallback((section?: PrefsSection) => setPrefs((p) => ({ open: true, section: section ?? p.section })), []);
 
   // Raccourcis clavier, ignorés quand on tape dans un champ.
   const { togglePlay, step, seek, shuttle } = player;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      // Une fenêtre (préférences, commandes, aide) est ouverte : elle a le clavier.
+      if (document.querySelector("dialog[open]")) return;
+      if (shortcutBlocked(e)) return;
       // ⌘ sur Mac, Ctrl sous Windows.
       if (hasCommandKey(e) && e.key.toLowerCase() === "o") {
         e.preventDefault();
         void newTab();
+        return;
+      }
+      if (hasCommandKey(e) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen(true);
+        return;
+      }
+      if (hasCommandKey(e) && e.key === ",") {
+        e.preventDefault();
+        openPrefs();
+        return;
+      }
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        setShortcutsOpen(true);
         return;
       }
       if (!info) return;
@@ -895,16 +932,111 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [info, togglePlay, step, seek, shuttle, capture, newTab, cutHere, setReference, setUi, scopesOpen, player.frameRef]);
+  }, [info, togglePlay, step, seek, shuttle, capture, newTab, cutHere, setReference, setUi, scopesOpen, player.frameRef, openPrefs]);
 
-  const markers = useMemo(() => captures.slice(0, 300).map((c) => c.frame), [captures]);
+  // Un repère par image capturée (deux captures de la même image : un seul repère, clé unique).
+  const markers = useMemo(() => [...new Set(captures.map((c) => c.frame))].slice(0, 300), [captures]);
   const previewState = player.playing ? "playing" : stillLoading && preview ? "loading" : still ? "ready" : "idle";
+  const appearance = settings ? { theme: settings.ui.theme, skin: settings.ui.skin, effects: settings.ui.effects } : null;
+  const shownTheme = appearance ? effectiveTheme(appearance) : "dark";
+  const [lookLayer, setLookLayer] = useState<LayerId>("frame");
+  const syncNote = sync.status === "corrected" ? `Viewer offset ${syncOffset > 0 ? "+" : ""}${syncOffset} frame corrected` : null;
+
+  /* ───── Palette de commandes ───── */
+
+  const commands = useMemo((): Command[] => {
+    if (!settings) return [];
+    const s = settings;
+    const noFilm = !info;
+    const onOff = (v: boolean) => (v ? "On" : "Off");
+    const goto = (t: Tab) => () => setTab(t);
+    const look = (l: LayerId) => () => {
+      setTab("look");
+      setLookLayer(l);
+    };
+    const exportLabel = output === "sheet" ? "Make the contact sheet" : `Export ${plan.count ?? ""} ${s.export.format === "png" ? "PNG" : "JPEG"} stills`.replace("  ", " ");
+    const list: Command[] = [
+      { id: "open", group: "Film", label: "Open a film", shortcut: shortcut("O"), keywords: "file video load", run: () => void newTab() },
+      { id: "close-tab", group: "Film", label: "Close this film tab", disabled: !tabs.active, keywords: "tab", run: () => tabs.active && void closeTab(tabs.active) },
+      { id: "play", group: "Playback", label: player.playing ? "Pause" : "Play", shortcut: "Space", disabled: noFilm, run: () => togglePlay() },
+      { id: "first", group: "Playback", label: "Go to the first frame", shortcut: "Home", disabled: noFilm, keywords: "start", run: () => seek(0) },
+      { id: "last", group: "Playback", label: "Go to the last frame", shortcut: "End", disabled: noFilm, keywords: "end", run: () => info && seek(info.frameCount - 1) },
+      { id: "in", group: "Playback", label: "Mark in", shortcut: "I", disabled: noFilm, keywords: "range point", run: () => setMarks((m) => ({ start: player.frameRef.current, end: m.end != null && m.end < player.frameRef.current ? null : m.end })) },
+      { id: "out", group: "Playback", label: "Mark out", shortcut: "O", disabled: noFilm, keywords: "range point", run: () => setMarks((m) => ({ start: m.start != null && m.start > player.frameRef.current ? null : m.start, end: player.frameRef.current })) },
+      { id: "clear-marks", group: "Playback", label: "Clear in and out", shortcut: `${IS_MAC ? "⌥" : "Alt"} + X`, disabled: noFilm || (marks.start == null && marks.end == null), run: () => setMarks({ start: null, end: null }) },
+      { id: "cut", group: "Playback", label: "Add a cut at the playhead", shortcut: "B", disabled: noFilm, keywords: "shot split", run: cutHere },
+      { id: "capture", group: "Frames", label: "Capture the displayed frame", shortcut: "C", disabled: noFilm, keywords: "still screenshot grab", run: () => void capture() },
+      { id: "ref", group: "Frames", label: "Set the displayed frame as reference A", shortcut: "R", disabled: noFilm, keywords: "a/b compare", run: () => void setReference() },
+      { id: "wipe", group: "Frames", label: "A/B wipe", value: compare ? onOff(compare.on) : undefined, shortcut: "W", disabled: !compare, keywords: "compare", run: () => setCompare((c) => (c ? { ...c, on: !c.on } : c)) },
+      { id: "preview", group: "Frames", label: "Export preview", value: onOff(preview), shortcut: "P", disabled: noFilm, keywords: "overlay look", run: () => setPreview((p) => !p) },
+      { id: "scopes", group: "Frames", label: "Scopes", value: onOff(scopesOpen), shortcut: "S", disabled: noFilm, keywords: "waveform parade vectorscope histogram", run: () => setUi({ scopesOpen: !scopesOpen }) },
+      ...([["fit", "Zoom: fit"], [1, "Zoom: 100 %"], [2, "Zoom: 200 %"]] as [Zoom, string][]).map(([z, l]): Command => ({
+        id: `zoom-${z}`, group: "Frames", label: l, shortcut: "Z", disabled: noFilm, value: zoom === z ? "Current" : undefined, run: () => setZoom(z),
+      })),
+      { id: "analyze", group: "Extract", label: analysis ? "Re-analyze the film" : "Analyze the film", disabled: noFilm || !!job, keywords: "detect shots cuts scdet barcode", run: () => void analyze() },
+      { id: "import", group: "Extract", label: "Import an edit list", disabled: noFilm || !!job, keywords: "edl otio xml fcpxml cuts", run: () => void importCuts() },
+      ...([["shots", "By shot"], ["interval", "Every X seconds"], ["spread", "N frames spread over the film"]] as [Settings["batch"]["mode"], string][]).map(([m, l]): Command => ({
+        id: `mode-${m}`, group: "Extract", label: `Extract: ${l}`, value: s.batch.mode === m ? "Current" : undefined, disabled: !!job,
+        run: () => {
+          changeSettings({ ...s, batch: { ...s.batch, mode: m } });
+          setTab("extract");
+        },
+      })),
+      { id: "output-stills", group: "Extract", label: "Output: stills", value: output === "stills" ? "Current" : undefined, run: () => { setOutput("stills"); setTab("extract"); } },
+      { id: "output-sheet", group: "Extract", label: "Output: contact sheet", value: output === "sheet" ? "Current" : undefined, keywords: "pdf grid print", run: () => { setOutput("sheet"); setTab("extract"); } },
+      { id: "export", group: "Extract", label: exportLabel, disabled: noFilm || !!job || !plan.count, keywords: "batch export render sheet", run: () => void exportBatch() },
+      { id: "cancel", group: "Extract", label: "Cancel the current job", disabled: !job, keywords: "stop", run: cancelJob },
+      { id: "barcode", group: "Extract", label: "Export the barcode", disabled: !analysis, keywords: "colors", run: () => void exportBarcode() },
+      { id: "all", group: "Extract", label: "Select all shots", disabled: !shots.length, run: () => setAll(true) },
+      { id: "none", group: "Extract", label: "Select no shot", disabled: !shots.length, run: () => setAll(false) },
+      { id: "invert", group: "Extract", label: "Invert the shot selection", disabled: !shots.length, run: () => setAll("invert") },
+      { id: "undo-edits", group: "Extract", label: "Undo cut edits (merges and added cuts)", disabled: !removedCuts.size && !addedCuts.size, run: resetEdits },
+      { id: "palette-save", group: "Gallery", label: "Save this frame's palette (.ase .css .gpl .json)", disabled: noFilm, keywords: "colors swatches", run: () => void savePalette() },
+      { id: "open-folder", group: "Gallery", label: "Show the output folder", disabled: !s.outputDir, keywords: "explorer finder", run: () => void api.openFolder().catch(fail) },
+      { id: "apply-look", group: "Look", label: "Apply the look to exported stills", value: onOff(s.export.overlay), keywords: "overlay burn", run: () => changeSettings({ ...s, export: { ...s.export, overlay: !s.export.overlay } }) },
+      { id: "look-frame", group: "Look", label: "Look › Frame (margins, background)", run: look("frame") },
+      { id: "look-palette", group: "Look", label: "Look › Palette band", value: onOff(s.overlay.palette.enabled), keywords: "colors swatches count weighting accents", run: look("palette") },
+      { id: "look-scope", group: "Look", label: "Look › Scope burnt into the image", value: onOff(s.overlay.scope.enabled), run: look("scope") },
+      ...s.overlay.texts.map((t, i): Command => ({ id: `look-text-${i}`, group: "Look", label: `Look › Text: ${t.template || "(empty)"}`, value: onOff(t.enabled), run: look(`text:${i}`) })),
+      ...presets.map((p): Command => ({
+        id: `preset-${p.name}`, group: "Look", label: `Load the preset “${p.name}”`, value: s.overlay.name === p.name ? "Current" : undefined, keywords: "overlay",
+        run: () => changeSettings({ ...s, overlay: structuredClone(p) }),
+      })),
+      { id: "dir", group: "Output", label: "Choose the output folder", value: s.outputDir ?? "Not set", keywords: "destination", run: () => void chooseDir() },
+      { id: "format", group: "Output", label: "Stills format", value: s.export.format === "png" ? "PNG" : "JPEG", keywords: "jpeg png", run: () => changeSettings({ ...s, export: { ...s.export, format: s.export.format === "png" ? "jpeg" : "png" } }) },
+      { id: "subfolder", group: "Output", label: "Batch exports in a subfolder", value: onOff(s.export.subfolder), run: () => changeSettings({ ...s, export: { ...s.export, subfolder: !s.export.subfolder } }) },
+      { id: "csv", group: "Output", label: "Write a CSV list", value: onOff(s.export.csv), keywords: "excel", run: () => changeSettings({ ...s, export: { ...s.export, csv: !s.export.csv } }) },
+      { id: "output-tab", group: "Output", label: "Output › Color, timecode, JPEG quality", keywords: "rec709 srgb chroma", run: goto("output") },
+      { id: "sheet-tab", group: "Output", label: "Output › Contact sheet settings", keywords: "pdf columns page", run: goto("output") },
+      ...TABS.map(([t, l]): Command => ({ id: `tab-${t}`, group: "Go to", label: `${l[0]}${l.slice(1).toLowerCase()} tab`, value: tab === t ? "Current" : undefined, run: goto(t) })),
+      ...SKINS.map((k): Command => ({
+        id: `skin-${k.id}`, group: "Appearance", label: `Skin: ${k.name}`, value: s.ui.skin === k.id ? "Current" : k.note, keywords: "theme look colors",
+        run: () => setUi({ skin: k.id }),
+      })),
+      { id: "theme", group: "Appearance", label: s.ui.theme === "dark" ? "Light theme" : "Dark theme", disabled: s.ui.skin !== "studio", value: s.ui.skin !== "studio" ? "Studio skin only" : undefined, run: () => setUi({ theme: s.ui.theme === "dark" ? "light" : "dark" }) },
+      { id: "effects", group: "Appearance", label: "Skin decoration", value: onOff(s.ui.effects), run: () => setUi({ effects: !s.ui.effects }) },
+      { id: "prefs", group: "App", label: "Preferences", shortcut: shortcut(","), keywords: "settings options", run: () => openPrefs("appearance") },
+      { id: "decoder", group: "App", label: "Analysis decoder", value: s.shots.decoder === "auto" ? "Auto" : s.shots.decoder.toUpperCase(), keywords: "gpu cpu nvdec videotoolbox", run: () => openPrefs("analysis") },
+      { id: "updates", group: "App", label: "Check for updates", disabled: appInfo ? !appInfo.updatesEnabled : false, run: () => { openPrefs("updates"); void checkUpdate(); } },
+      { id: "projects", group: "App", label: "Saved projects and analyses", keywords: "cache clear disk", run: () => openPrefs("projects") },
+      { id: "shortcuts", group: "App", label: "Keyboard shortcuts", shortcut: "?", keywords: "help keys", run: () => setShortcutsOpen(true) },
+      { id: "about", group: "App", label: "About Photogramme and licenses", run: () => openPrefs("about") },
+      { id: "repo", group: "App", label: "Source code on GitHub", run: () => void api.openLink("repo").catch(fail) },
+      { id: "issues", group: "App", label: "Report a problem", keywords: "bug issue", run: () => void api.openLink("issues").catch(fail) },
+    ];
+    if (appInfo?.kofi) list.push({ id: "kofi", group: "App", label: "Buy me a coffee on Ko-fi", keywords: "support donate", run: () => void api.openLink("kofi").catch(fail) });
+    return list;
+  }, [settings, info, tabs.active, player.playing, player.frameRef, marks, compare, preview, scopesOpen, zoom, analysis, job, output, plan.count,
+    shots.length, removedCuts.size, addedCuts.size, presets, tab, appInfo, newTab, closeTab, togglePlay, seek, cutHere, capture, setReference,
+    setUi, analyze, importCuts, changeSettings, exportBatch, cancelJob, exportBarcode, setAll, resetEdits, savePalette, fail, chooseDir,
+    openPrefs, checkUpdate]);
 
   return (
     <div className="app">
-      <TopBar info={info} onOpen={() => void newTab()} theme={settings?.ui.theme ?? savedTheme()} onTheme={(theme) => setUi({ theme })} />
-      <TabBar tabs={tabs} switching={switching} onSelect={(k) => void switchTab(k)} onClose={(k) => void closeTab(k)}
-        onNew={() => void newTab()} />
+      <TopBar tabs={tabs} switching={switching} onSelect={(k) => void switchTab(k)} onClose={(k) => void closeTab(k)} onNew={() => void newTab()}
+        theme={shownTheme} onTheme={settings && settings.ui.skin === "studio" ? (t) => setUi({ theme: t }) : null}
+        onCommands={() => setPaletteOpen(true)} onPreferences={() => openPrefs()} />
+      <div className="skin-decor" aria-hidden />
       {banner && (
         <UpdateBanner update={banner} progress={installing} onInstall={() => void installUpdate()} onLater={() => setBanner(null)}
           onSkip={() => {
@@ -918,48 +1050,51 @@ export default function App() {
           {info ? (
             <>
               <div className="viewer-row">
-                <Viewer info={info} videoRef={player.videoRef} frame={player.frame} preview={preview}
-                  previewSize={previewSize} previewState={previewState} onTogglePreview={() => setPreview((p) => !p)}
-                  zoom={zoom} onZoom={setZoom} compare={compare} onSplit={(split) => setCompare((c) => (c ? { ...c, split } : c))}
-                  onToggleCompare={() => setCompare((c) => (c ? { ...c, on: !c.on } : c))}
-                  cors={cors} onCorsFailed={() => {
-                    setCors(false);
-                    setSync({ status: "unavailable", tries: 4 });
-                  }}>
-                  <canvas ref={canvasRef} className="preview-canvas"
-                    style={{ display: preview && previewSize && !player.playing ? "block" : "none" }} />
-                  {preview && settings && !settings.export.overlay && !player.playing && (
-                    <div className="preview-note">OVERLAY OFF IN EXPORTS - turn on "Apply the overlay to exports"</div>
-                  )}
-                </Viewer>
+                <div className="viewer-col">
+                  <Viewer info={info} videoRef={player.videoRef} frame={player.frame} preview={preview}
+                    previewSize={previewSize} previewState={previewState} onTogglePreview={() => setPreview((p) => !p)}
+                    zoom={zoom} onZoom={setZoom} compare={compare} onSplit={(split) => setCompare((c) => (c ? { ...c, split } : c))}
+                    onToggleCompare={() => setCompare((c) => (c ? { ...c, on: !c.on } : c))} onSetReference={() => void setReference()}
+                    scopesOpen={scopesOpen} onToggleScopes={() => setUi({ scopesOpen: !scopesOpen })}
+                    cors={cors} onCorsFailed={() => {
+                      setCors(false);
+                      setSync({ status: "unavailable", tries: 4 });
+                    }}>
+                    <canvas ref={canvasRef} className="preview-canvas"
+                      style={{ display: preview && previewSize && !player.playing ? "block" : "none" }} />
+                    {preview && settings && !settings.export.overlay && !player.playing && (
+                      <div className="preview-note">LOOK OFF IN EXPORTS · turn on “Apply the look to exported stills” (LOOK)</div>
+                    )}
+                  </Viewer>
+                  <Transport info={info} marks={marks} playing={player.playing} shuttle={player.shuttleSpeed} busy={busy}
+                    onTogglePlay={player.togglePlay} onStep={player.step} onCapture={() => void capture()}
+                    onMarkIn={() => setMarks((m) => ({ start: player.frameRef.current, end: m.end != null && m.end < player.frameRef.current ? null : m.end }))}
+                    onMarkOut={() => setMarks((m) => ({ start: m.start != null && m.start > player.frameRef.current ? null : m.start, end: player.frameRef.current }))}
+                    onClearMarks={() => setMarks({ start: null, end: null })} />
+                </div>
                 {scopesOpen && settings && (
                   <ScopesPanel kind={settings.ui.scope} data={still} loading={stillLoading} playing={player.playing}
                     onKind={(scope: ScopeKind) => setUi({ scope })} onClose={() => setUi({ scopesOpen: false })} />
                 )}
               </div>
-              <Transport info={info} frame={player.frame} playing={player.playing} shuttle={player.shuttleSpeed} busy={busy}
-                onTogglePlay={player.togglePlay} onStep={player.step} onCapture={() => void capture()}
-                onMarkIn={() => setMarks((m) => ({ ...m, start: player.frameRef.current }))}
-                onMarkOut={() => setMarks((m) => ({ ...m, end: player.frameRef.current }))} />
-              {analysis && settings && (
-                <BarcodeStrip analysisId={analysis.id} mode={settings.barcode.mode} strip={settings.ui.strip ?? "barcode"}
-                  frames={info.frameCount} onSeek={player.seek} onStrip={(strip) => setUi({ strip })} />
-              )}
-              <Timeline info={info} frame={player.frame} markers={markers} cuts={cuts} manualCuts={manualCuts} range={marks} onSeek={player.seek} />
-              <p className="shortcuts small">
-                <kbd>Space</kbd> play · <kbd>J</kbd><kbd>K</kbd><kbd>L</kbd> shuttle · <kbd>I</kbd>/<kbd>O</kbd> in/out · <kbd>C</kbd> capture ·{" "}
-                <kbd>B</kbd> cut · <kbd>Z</kbd> zoom · <kbd>R</kbd>/<kbd>W</kbd> A/B · <kbd>S</kbd> scopes · <kbd>P</kbd> preview
-                {sync.status === "corrected" && <span className="sync-note"> · viewer offset {syncOffset > 0 ? "+" : ""}{syncOffset} corrected</span>}
-              </p>
+              <TimelinePanel strip={settings?.ui.strip ?? "barcode"} onStrip={(strip) => setUi({ strip })} hasAnalysis={!!analysis}>
+                {analysis && settings && (
+                  <BarcodeStrip analysisId={analysis.id} mode={settings.barcode.mode} strip={settings.ui.strip ?? "barcode"}
+                    frames={info.frameCount} onSeek={player.seek} />
+                )}
+                <Timeline info={info} frame={player.frame} markers={markers} cuts={cuts} manualCuts={manualCuts} range={marks} onSeek={player.seek} />
+              </TimelinePanel>
             </>
           ) : (
             <EmptyState onOpen={() => void openDialog()} dragging={dragging} />
           )}
         </main>
-        <aside className="side">
+        <aside className="side panel-box" aria-label="Inspector">
           <nav className="tabs" role="tablist" aria-label="Panels">
-            {([["extract", "EXTRACT"], ["captures", `CAPTURES${captures.length ? ` · ${captures.length}` : ""}`], ["settings", "SETTINGS"]] as [Tab, string][]).map(([t, l]) => (
-              <button key={t} type="button" role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>{l}</button>
+            {TABS.map(([t, l]) => (
+              <button key={t} type="button" role="tab" aria-selected={tab === t} className="tab" onClick={() => setTab(t)}>
+                {l}{t === "gallery" && captures.length > 0 && <span className="tab-count">{captures.length}</span>}
+              </button>
             ))}
           </nav>
           <div className="side-body">
@@ -975,25 +1110,31 @@ export default function App() {
             ) : (
               <p className="muted">Open a film to extract frames by shot, by interval or spread over the film.</p>
             ))}
-            {tab === "captures" && (
-              <CapturesPanel captures={captures} onSeek={player.seek} onReveal={(p) => api.reveal(p).catch(fail)}
-                onSavePalette={() => void savePalette()} onSetReference={() => void setReference()} />
+            {tab === "gallery" && (
+              <GalleryPanel captures={captures} reference={compare ? compare.ref.timecode : null} onSeek={player.seek}
+                onReveal={(p) => api.reveal(p).catch(fail)} onSavePalette={() => void savePalette()} onSetReference={() => void setReference()} />
             )}
-            {tab === "settings" && settings && (
-              <SettingsPanel settings={settings} presets={presets} appInfo={appInfo} update={update} onChange={changeSettings}
-                onPickDir={() => void chooseDir()} onOpenDir={() => void api.openFolder().catch(fail)}
+            {tab === "look" && settings && (
+              <LookPanel settings={settings} presets={presets} layer={lookLayer} onLayer={setLookLayer} onChange={changeSettings}
                 onSavePreset={(p) => api.savePreset(p).then(setPresets).then(() => setToast({ kind: "ok", text: `Preset "${p.name}" saved` })).catch(fail)}
                 onDeletePreset={(n) => api.deletePreset(n).then(setPresets).catch(fail)}
-                onOpenPresets={() => api.openPresetsFolder().catch(fail)}
-                onCheckUpdate={() => void checkUpdate()}
-                onOpenLink={(l) => api.openLink(l).catch(fail)} />
+                onOpenPresets={() => api.openPresetsFolder().catch(fail)} />
+            )}
+            {tab === "output" && settings && (
+              <OutputPanel settings={settings} onChange={changeSettings} onPickDir={() => void chooseDir()}
+                onOpenDir={() => void api.openFolder().catch(fail)} onExportBarcode={() => void exportBarcode()} canExportBarcode={!!analysis} />
             )}
           </div>
-        {tab === "settings" && (
-            <p className="legal">Photogramme, copyright (c) 2026 Arnaud Guillard. Free software under the GNU GPL v3, provided without any warranty. It uses libraries from the FFmpeg project under the LGPLv3. Full licenses: LICENSE.txt, THIRD_PARTY_NOTICES.txt and THIRD_PARTY_LICENSES.txt {IS_MAC ? "inside the app (Photogramme.app/Contents/Resources)" : "in the installation folder"}.</p>
-          )}
         </aside>
       </div>
+      <StatusBar info={info} analyzedWith={analysis?.decoder ?? null} syncNote={syncNote} onShortcuts={() => setShortcutsOpen(true)} />
+      {settings && (
+        <PrefsDialog open={prefs.open} section={prefs.section} onSection={(section) => setPrefs({ open: true, section })}
+          onClose={() => setPrefs((p) => ({ ...p, open: false }))} settings={settings} appInfo={appInfo} update={update}
+          onChange={changeSettings} onCheckUpdate={() => void checkUpdate()} onOpenLink={(l) => api.openLink(l).catch(fail)} />
+      )}
+      <CommandPalette open={paletteOpen} commands={commands} onClose={() => setPaletteOpen(false)} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <Toast toast={toast} onClose={closeToast} onError={fail} />
     </div>
   );

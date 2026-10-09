@@ -1,0 +1,26 @@
+import { describe, expect, it } from "vitest";
+import { effectiveTheme, parseAppearance, SKINS } from "../theme";
+
+describe("appearance", () => {
+  it("lets Studio follow the theme and the other skins impose their own", () => {
+    expect(effectiveTheme({ theme: "light", skin: "studio", effects: true })).toBe("light");
+    expect(effectiveTheme({ theme: "dark", skin: "studio", effects: true })).toBe("dark");
+    expect(effectiveTheme({ theme: "light", skin: "atomic", effects: true })).toBe("dark");
+    expect(effectiveTheme({ theme: "dark", skin: "mission", effects: true })).toBe("light");
+  });
+
+  it("ships exactly Studio, Atomic and Mission", () => {
+    expect(SKINS.map((s) => s.id)).toEqual(["studio", "atomic", "mission"]);
+  });
+
+  it("reads a damaged or old local copy without failing", () => {
+    expect(parseAppearance(null, null)).toEqual({ theme: "dark", skin: "studio", effects: true });
+    // v0.6 kept only the theme, under another key.
+    expect(parseAppearance(null, "light")).toEqual({ theme: "light", skin: "studio", effects: true });
+    expect(parseAppearance("{not json", "light").theme).toBe("light");
+    expect(parseAppearance('{"theme":"light","skin":"mission","effects":false}', null))
+      .toEqual({ theme: "light", skin: "mission", effects: false });
+    expect(parseAppearance('{"skin":"chrome","effects":"yes"}', null)).toEqual({ theme: "dark", skin: "studio", effects: true });
+    expect(parseAppearance("null", null)).toEqual({ theme: "dark", skin: "studio", effects: true });
+  });
+});

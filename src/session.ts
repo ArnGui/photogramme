@@ -6,7 +6,8 @@
 
 import type { CaptureResult, ShotSource } from "./types";
 
-export type SessionTab = "extract" | "captures" | "settings";
+/** Onglets de l'inspecteur (v0.7). Les noms de la v0.6 sont relus : captures → gallery, settings → look. */
+export type SessionTab = "extract" | "gallery" | "look" | "output";
 export type SessionOutput = "stills" | "sheet";
 
 export interface SessionUi {
@@ -67,6 +68,14 @@ function capture(x: unknown): CaptureResult | null {
   };
 }
 
+/** Onglet enregistré, y compris par la v0.6 (« captures », « settings »). */
+export function sessionTab(x: unknown): SessionTab {
+  if (x === "gallery" || x === "captures") return "gallery";
+  if (x === "look" || x === "settings") return "look";
+  if (x === "output") return "output";
+  return "extract";
+}
+
 /** Relit un état enregistré pour un film de `frames` images ; `null` s'il est inutilisable. */
 export function parseSession(x: unknown, frames: number): SessionUi | null {
   if (!isObj(x) || x.v !== 1 || frames <= 0) return null;
@@ -84,6 +93,6 @@ export function parseSession(x: unknown, frames: number): SessionUi | null {
       ? x.captures.slice(0, MAX_SESSION_CAPTURES).map(capture).filter((c): c is CaptureResult => c !== null)
       : [],
     output: x.output === "sheet" ? "sheet" : "stills",
-    tab: x.tab === "captures" || x.tab === "settings" ? x.tab : "extract",
+    tab: sessionTab(x.tab),
   };
 }

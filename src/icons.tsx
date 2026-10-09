@@ -65,3 +65,21 @@ export const IconSun = ({ size = 18 }: P) => (
 export const IconMoon = ({ size = 18 }: P) => (
   <svg {...base(size)}><path d="M14.6 11.2A6 6 0 0 1 6.8 3.4a6 6 0 1 0 7.8 7.8Z" /></svg>
 );
+export const IconSearch = ({ size = 14 }: P) => (
+  <svg {...base(size)}><circle cx="8" cy="8" r="5" /><path d="m12 12 4 4" /></svg>
+);
+export const IconGear = ({ size = 16 }: P) => (
+  <svg {...base(size)}>
+    <circle cx="9" cy="9" r="2.4" />
+    <path d="M9 1.8v2.2M9 14v2.2M1.8 9h2.2M14 9h2.2M3.9 3.9l1.6 1.6M12.5 12.5l1.6 1.6M3.9 14.1l1.6-1.6M12.5 5.5l1.6-1.6" />
+  </svg>
+);
+export const IconDots = ({ size = 16 }: P) => (
+  <svg {...base(size)} fill="currentColor" stroke="none"><circle cx="3.5" cy="9" r="1.5" /><circle cx="9" cy="9" r="1.5" /><circle cx="14.5" cy="9" r="1.5" /></svg>
+);
+export const IconChevron = ({ size = 12 }: P) => (
+  <svg {...base(size)}><path d="m7 4 5 5-5 5" /></svg>
+);
+export const IconEye = ({ size = 15 }: P) => (
+  <svg {...base(size)}><path d="M1.5 9S4.2 4 9 4s7.5 5 7.5 5S13.8 14 9 14 1.5 9 1.5 9z" /><circle cx="9" cy="9" r="2.2" /></svg>
+);

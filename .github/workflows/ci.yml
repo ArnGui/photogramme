@@ -31,6 +31,28 @@ jobs:
       - run: npm test
       - run: cargo test --manifest-path src-tauri/core/Cargo.toml
 
+  # Interface tests: the real interface in Chromium, with a fake Tauri backend
+  # (e2e/mock-tauri.js). Three skins, three window sizes, every command of the
+  # palette, keyboard, dialogs, exports. Reports kept 7 days on failure.
+  interface:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: interface-test-results
+          path: e2e/.results
+          retention-days: 7
+
   # macOS (Apple Silicon): compiles the whole app, Tauri layer included, and
   # runs every Rust test there. FFmpeg comes from Homebrew for the tests only
   # (it has libx264 to encode the test videos); the app ships its own LGPL

@@ -6,10 +6,15 @@ import type { ReactNode } from "react";
 import type { Anchor } from "./types";
 import { SYSTEM_FONTS } from "./platform";
 
-export function Section({ title, children, defaultOpen = false }: { title: string; children: ReactNode; defaultOpen?: boolean }) {
+export function Section({ title, children, defaultOpen = false, summary }: {
+  title: string; children: ReactNode; defaultOpen?: boolean; summary?: string;
+}) {
   return (
     <details className="section" open={defaultOpen}>
-      <summary>{title}</summary>
+      <summary>
+        <span className="section-title">{title}</span>
+        {summary && <span className="section-summary mono">{summary}</span>}
+      </summary>
       <div className="section-body">{children}</div>
     </details>
   );
@@ -63,15 +68,15 @@ export function Toggle({ label, checked, onChange, hint }: { label: string; chec
   );
 }
 
-export function Choice<T extends string>({ label, value, options, onChange }: {
-  label: string; value: T; options: [T, string][]; onChange: (v: T) => void;
+export function Choice<T extends string>({ label, value, options, onChange, disabled = false }: {
+  label: string; value: T; options: [T, string][]; onChange: (v: T) => void; disabled?: boolean;
 }) {
   return (
     <div className="field">
       <span className="label">{label}</span>
       <div className="pills" role="group" aria-label={label}>
         {options.map(([v, l]) => (
-          <button key={v} type="button" className="pill" aria-pressed={value === v} onClick={() => onChange(v)}>{l}</button>
+          <button key={v} type="button" className="pill" aria-pressed={value === v} disabled={disabled} onClick={() => onChange(v)}>{l}</button>
         ))}
       </div>
     </div>

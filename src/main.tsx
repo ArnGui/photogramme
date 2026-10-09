@@ -7,12 +7,19 @@ import "@fontsource/barlow-condensed/600.css";
 import "@fontsource/barlow-condensed/700.css";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
+// Interface (v0.7) : Instrument Sans ; étiquettes des skins Atomic (Space Mono) et Mission (Archivo).
+// Toutes embarquées : l'application ne charge rien depuis le réseau.
+import "@fontsource-variable/instrument-sans/wght.css";
+import "@fontsource/space-mono/400.css";
+import "@fontsource/space-mono/700.css";
+import "@fontsource/archivo/600.css";
+import "@fontsource/archivo/700.css";
 import "./styles.css";
 import App from "./App";
-import { applyTheme, savedTheme } from "./theme";
+import { applyAppearance, savedAppearance } from "./theme";
 
-// Thème posé avant le premier rendu : pas d'éclair sombre au lancement en thème clair.
-applyTheme(savedTheme());
+// Apparence posée avant le premier rendu : pas d'éclair de la mauvaise couleur au lancement.
+applyAppearance(savedAppearance());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

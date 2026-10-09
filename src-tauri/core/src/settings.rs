@@ -192,14 +192,43 @@ pub struct UiSettings {
     pub scope: ScopeKind,
     /// Bande au-dessus de la timeline : code-barre, vignettes du film ou rien.
     pub strip: StripMode,
-    /// Thème de l'interface.
+    /// Thème de l'interface (ne s'applique qu'au skin Studio : les autres fixent leur propre luminosité).
     pub theme: Theme,
+    /// Habillage de l'interface. Une valeur inconnue (version plus récente) redonne Studio
+    /// au lieu de rejeter tout le fichier de réglages.
+    #[serde(deserialize_with = "skin_or_default")]
+    pub skin: Skin,
+    /// Décor du skin (rayures, barres de couleur, trame) ; les couleurs restent.
+    pub effects: bool,
 }
 
 impl Default for UiSettings {
     fn default() -> Self {
-        Self { scopes_open: false, scope: ScopeKind::Waveform, strip: StripMode::Barcode, theme: Theme::Dark }
+        Self {
+            scopes_open: false,
+            scope: ScopeKind::Waveform,
+            strip: StripMode::Barcode,
+            theme: Theme::Dark,
+            skin: Skin::Studio,
+            effects: true,
+        }
     }
+}
+
+/// Habillage de l'interface. Ne touche jamais la visionneuse, les scopes ni les fichiers exportés.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Skin {
+    #[default]
+    Studio,
+    Atomic,
+    Mission,
+}
+
+fn skin_or_default<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Skin, D::Error> {
+    // Lu comme une valeur JSON quelconque : ni chaîne inconnue ni type inattendu ne fait échouer le fichier.
+    let v = serde_json::Value::deserialize(d)?;
+    Ok(serde_json::from_value(v).unwrap_or_default())
 }
 
 /// Thème de l'interface (les écrans d'image restent sombres dans les deux).
@@ -388,6 +417,40 @@ mod tests {
         s.palette.count = 8;
         save(&p, &s).unwrap();
         assert_eq!(load(&p), s);
+        let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    }
+
+    #[test]
+    fn skin_par_defaut_aller_retour_et_valeur_inconnue() {
+        // Fichier d'avant les skins : Studio, décor actif, rien d'autre ne change.
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"theme":"light","strip":"frames"}}"#).unwrap();
+        assert_eq!(old.ui.skin, Skin::Studio);
+        assert!(old.ui.effects);
+        assert_eq!(old.ui.theme, Theme::Light);
+        assert_eq!(old.quality, 88);
+
+        let p = tmp("skin.json");
+        let mut s = Settings::default();
+        s.ui.skin = Skin::Mission;
+        s.ui.effects = false;
+        save(&p, &s).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        assert!(text.contains(r#""skin": "mission""#), "{text}");
+        assert_eq!(load(&p), s);
+
+        // Skin d'une version plus récente, ou mauvais type : Studio, et le reste du fichier est gardé.
+        for bad in [r#""chrome""#, "42", "null", r#"{"x":1}"#, r#""Atomic""#] {
+            let json = format!(r#"{{"quality":77,"ui":{{"skin":{bad},"effects":false}}}}"#);
+            std::fs::write(&p, json).unwrap();
+            let l = load(&p);
+            assert_eq!(l.ui.skin, Skin::Studio, "{bad}");
+            assert!(!l.ui.effects, "{bad}");
+            assert_eq!(l.quality, 77, "le reste du fichier doit survivre à {bad}");
+        }
+        for (txt, skin) in [("studio", Skin::Studio), ("atomic", Skin::Atomic), ("mission", Skin::Mission)] {
+            std::fs::write(&p, format!(r#"{{"ui":{{"skin":"{txt}"}}}}"#)).unwrap();
+            assert_eq!(load(&p).ui.skin, skin);
+        }
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
     }
 

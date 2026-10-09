@@ -66,7 +66,10 @@ export function usePlayer(info: VideoInfo | null, offset = 0, mountKey = 0) {
     if (typeof v.requestVideoFrameCallback === "function") {
       const cb = (_now: number, meta: FrameMeta) => {
         if (cancelled) return;
-        setFrame(clamp(meta.mediaTime * fps + offsetRef.current));
+        // Pendant un déplacement, un rappel déjà en route décrit l'image d'AVANT : l'écouter
+        // ramenait le numéro en arrière un instant (N+1 → N → N+1), et un I, O ou C tapé
+        // à ce moment visait la mauvaise image. `seek` a déjà posé le bon numéro.
+        if (!v.seeking) setFrame(clamp(meta.mediaTime * fps + offsetRef.current));
         handle = v.requestVideoFrameCallback!(cb);
       };
       handle = v.requestVideoFrameCallback(cb);

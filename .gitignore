@@ -25,3 +25,8 @@ release-extras/
 # FFmpeg built for macOS by scripts/build-ffmpeg-macos.sh
 src-tauri/binaries/*-apple-darwin
 src-tauri/binaries/THIRD_PARTY_NOTICES-macos.txt
+
+# Playwright: reports and screenshots of the interface tests
+e2e/.results/
+playwright-report/
+test-results/

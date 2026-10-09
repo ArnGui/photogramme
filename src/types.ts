@@ -56,6 +56,8 @@ export type BarcodeMode = "vertical" | "average";
 export type ScopeKind = "waveform" | "parade" | "vectorscope" | "histogram";
 export type StripMode = "barcode" | "frames" | "off";
 export type Theme = "dark" | "light";
+/** Habillage de l'interface ; ne touche jamais la visionneuse, les scopes ni les fichiers. */
+export type Skin = "studio" | "atomic" | "mission";
 
 export type Anchor =
   | "topLeft" | "top" | "topRight"
@@ -166,7 +168,7 @@ export interface Settings {
   overlay: OverlayPreset;
   sheet: SheetSettings;
   updates: { checkAtStartup: boolean; skipped: string | null };
-  ui: { scopesOpen: boolean; scope: ScopeKind; strip: StripMode; theme: Theme };
+  ui: { scopesOpen: boolean; scope: ScopeKind; strip: StripMode; theme: Theme; skin: Skin; effects: boolean };
 }
 
 export interface CaptureResult {
