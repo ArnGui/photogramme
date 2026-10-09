@@ -78,27 +78,14 @@ pub fn encode_image(
     }
 }
 
-fn encode_png(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    rgba: bool,
-    icc: Option<&[u8]>,
-) -> Result<Vec<u8>, String> {
+fn encode_png(data: &[u8], width: u32, height: u32, rgba: bool, icc: Option<&[u8]>) -> Result<Vec<u8>, String> {
     let bpp = if rgba { 4 } else { 3 };
     if width == 0 || height == 0 || data.len() != width as usize * height as usize * bpp {
-        return Err(format!(
-            "Incomplete frame: {} bytes for {width}×{height}.",
-            data.len()
-        ));
+        return Err(format!("Incomplete frame: {} bytes for {width}×{height}.", data.len()));
     }
     // Le PNG n'a pas besoin de l'alpha (toujours opaque ici) : RVB, 25 % plus léger.
     let rgb: std::borrow::Cow<[u8]> = if rgba {
-        std::borrow::Cow::Owned(
-            data.chunks_exact(4)
-                .flat_map(|p| [p[0], p[1], p[2]])
-                .collect(),
-        )
+        std::borrow::Cow::Owned(data.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect())
     } else {
         std::borrow::Cow::Borrowed(data)
     };
@@ -110,16 +97,11 @@ fn encode_png(
         if let Some(p) = icc {
             info.icc_profile = Some(std::borrow::Cow::Owned(p.to_vec()));
         }
-        let mut enc = png::Encoder::with_info(&mut out, info)
-            .map_err(|e| format!("PNG encoding failed: {e}"))?;
+        let mut enc = png::Encoder::with_info(&mut out, info).map_err(|e| format!("PNG encoding failed: {e}"))?;
         enc.set_compression(png::Compression::Fast);
-        let mut w = enc
-            .write_header()
-            .map_err(|e| format!("PNG encoding failed: {e}"))?;
-        w.write_image_data(&rgb)
-            .map_err(|e| format!("PNG encoding failed: {e}"))?;
-        w.finish()
-            .map_err(|e| format!("PNG encoding failed: {e}"))?;
+        let mut w = enc.write_header().map_err(|e| format!("PNG encoding failed: {e}"))?;
+        w.write_image_data(&rgb).map_err(|e| format!("PNG encoding failed: {e}"))?;
+        w.finish().map_err(|e| format!("PNG encoding failed: {e}"))?;
     }
     Ok(out)
 }
@@ -160,8 +142,7 @@ fn encode_jpeg(
     let mut enc = Encoder::new(&mut out, quality);
     enc.set_sampling_factor(chroma.sampling());
     if let Some(p) = icc {
-        enc.add_icc_profile(p)
-            .map_err(|e| format!("ICC profile: {e}"))?;
+        enc.add_icc_profile(p).map_err(|e| format!("ICC profile: {e}"))?;
     }
     enc.encode(data, w, h, color)
         .map_err(|e| format!("JPEG encoding failed: {e}"))?;
@@ -198,33 +179,22 @@ mod tests {
     #[test]
     fn la_qualite_change_le_poids() {
         let img = image(256, 144);
-        let low = encode_rgb(&img, 256, 144, 50, Chroma::C444, false)
-            .unwrap()
-            .len();
-        let high = encode_rgb(&img, 256, 144, 98, Chroma::C444, false)
-            .unwrap()
-            .len();
+        let low = encode_rgb(&img, 256, 144, 50, Chroma::C444, false).unwrap().len();
+        let high = encode_rgb(&img, 256, 144, 98, Chroma::C444, false).unwrap().len();
         assert!(high > low * 2, "q50={low} q98={high}");
     }
 
     #[test]
     fn le_444_pese_plus_que_le_420() {
         let img = image(256, 144);
-        let a = encode_rgb(&img, 256, 144, 92, Chroma::C444, false)
-            .unwrap()
-            .len();
-        let b = encode_rgb(&img, 256, 144, 92, Chroma::C420, false)
-            .unwrap()
-            .len();
+        let a = encode_rgb(&img, 256, 144, 92, Chroma::C444, false).unwrap().len();
+        let b = encode_rgb(&img, 256, 144, 92, Chroma::C420, false).unwrap().len();
         assert!(a > b, "444={a} 420={b}");
     }
 
     #[test]
     fn accepte_le_rvba() {
-        let rgba: Vec<u8> = image(16, 16)
-            .chunks(3)
-            .flat_map(|p| [p[0], p[1], p[2], 255])
-            .collect();
+        let rgba: Vec<u8> = image(16, 16).chunks(3).flat_map(|p| [p[0], p[1], p[2], 255]).collect();
         assert!(encode_rgb(&rgba, 16, 16, 90, Chroma::C420, true).is_ok());
     }
 
@@ -239,17 +209,7 @@ mod tests {
     fn png_sans_perte_avec_profil() {
         let img = image(32, 16);
         let icc = crate::color::icc_profile(crate::color::ColorProfile::Srgb).unwrap();
-        let png = encode_image(
-            &img,
-            32,
-            16,
-            false,
-            ImageFormat::Png,
-            0,
-            Chroma::C444,
-            Some(&icc),
-        )
-        .unwrap();
+        let png = encode_image(&img, 32, 16, false, ImageFormat::Png, 0, Chroma::C444, Some(&icc)).unwrap();
         assert_eq!(&png[1..4], b"PNG");
         assert!(png.windows(4).any(|w| w == b"iCCP"));
         let dec = png::Decoder::new(std::io::Cursor::new(&png));
@@ -257,26 +217,13 @@ mod tests {
         let mut buf = vec![0; r.output_buffer_size().unwrap()];
         r.next_frame(&mut buf).unwrap();
         assert_eq!(buf, img, "sans perte");
-        let jpg = encode_image(
-            &img,
-            32,
-            16,
-            false,
-            ImageFormat::Jpeg,
-            90,
-            Chroma::C444,
-            Some(&icc),
-        )
-        .unwrap();
+        let jpg = encode_image(&img, 32, 16, false, ImageFormat::Jpeg, 90, Chroma::C444, Some(&icc)).unwrap();
         assert!(jpg.windows(12).any(|w| w == b"ICC_PROFILE\0"));
     }
 
     #[test]
     fn serialise_comme_l_interface() {
         assert_eq!(serde_json::to_string(&Chroma::C444).unwrap(), "\"4:4:4\"");
-        assert_eq!(
-            serde_json::from_str::<Chroma>("\"4:2:0\"").unwrap(),
-            Chroma::C420
-        );
+        assert_eq!(serde_json::from_str::<Chroma>("\"4:2:0\"").unwrap(), Chroma::C420);
     }
 }

@@ -52,12 +52,7 @@ pub struct PaletteOptions {
 
 impl Default for PaletteOptions {
     fn default() -> Self {
-        Self {
-            count: 6,
-            sort: PaletteSort::Share,
-            ignore_bars: true,
-            weighting: PaletteWeighting::Area,
-        }
+        Self { count: 6, sort: PaletteSort::Share, ignore_bars: true, weighting: PaletteWeighting::Area }
     }
 }
 
@@ -83,22 +78,14 @@ fn srgb_to_linear_lut() -> [f32; 256] {
     let mut t = [0.0f32; 256];
     for (i, v) in t.iter_mut().enumerate() {
         let c = i as f32 / 255.0;
-        *v = if c <= 0.04045 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        };
+        *v = if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) };
     }
     t
 }
 
 fn linear_to_srgb(c: f32) -> u8 {
     let c = c.clamp(0.0, 1.0);
-    let v = if c <= 0.003_130_8 {
-        12.92 * c
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
+    let v = if c <= 0.003_130_8 { 12.92 * c } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 };
     (v * 255.0).round().clamp(0.0, 255.0) as u8
 }
 
@@ -109,20 +96,12 @@ const ZN: f32 = 1.088_83;
 
 fn f_lab(t: f32) -> f32 {
     const D: f32 = 6.0 / 29.0;
-    if t > D * D * D {
-        t.cbrt()
-    } else {
-        t / (3.0 * D * D) + 4.0 / 29.0
-    }
+    if t > D * D * D { t.cbrt() } else { t / (3.0 * D * D) + 4.0 / 29.0 }
 }
 
 fn f_lab_inv(t: f32) -> f32 {
     const D: f32 = 6.0 / 29.0;
-    if t > D {
-        t * t * t
-    } else {
-        3.0 * D * D * (t - 4.0 / 29.0)
-    }
+    if t > D { t * t * t } else { 3.0 * D * D * (t - 4.0 / 29.0) }
 }
 
 /// RVB linéaire → Lab (matrice sRGB/BT.709, D65).
@@ -153,18 +132,13 @@ pub fn content_box(px: &[u8], w: usize, h: usize, bpp: usize) -> (usize, usize, 
     };
     // Un pixel sur 4 suffit pour décider d'une ligne.
     let row_has = |y: usize| (0..w).step_by(4).chain([w - 1]).any(|x| bright(x, y));
-    let col_has =
-        |x: usize, y0: usize, y1: usize| (y0..y1).step_by(4).chain([y1 - 1]).any(|y| bright(x, y));
+    let col_has = |x: usize, y0: usize, y1: usize| (y0..y1).step_by(4).chain([y1 - 1]).any(|y| bright(x, y));
     let Some(y0) = (0..h).find(|&y| row_has(y)) else {
         return (0, 0, w, h); // image noire : tout garder
     };
     let y1 = (0..h).rev().find(|&y| row_has(y)).unwrap() + 1;
     let x0 = (0..w).find(|&x| col_has(x, y0, y1)).unwrap_or(0);
-    let x1 = (0..w)
-        .rev()
-        .find(|&x| col_has(x, y0, y1))
-        .map(|x| x + 1)
-        .unwrap_or(w);
+    let x1 = (0..w).rev().find(|&x| col_has(x, y0, y1)).map(|x| x + 1).unwrap_or(w);
     (x0, y0, x1, y1)
 }
 
@@ -199,11 +173,7 @@ fn kmeans(points: &[[f32; 3]], weights: &[f32], k: usize) -> (Vec<[f32; 3]>, Vec
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let n = points.len();
     let mut centers: Vec<[f32; 3]> = vec![points[(rng.next() % n as u64) as usize]];
-    let mut d: Vec<f32> = points
-        .iter()
-        .zip(weights)
-        .map(|(p, w)| dist2(p, &centers[0]) * w)
-        .collect();
+    let mut d: Vec<f32> = points.iter().zip(weights).map(|(p, w)| dist2(p, &centers[0]) * w).collect();
     while centers.len() < k {
         let total: f32 = d.iter().sum();
         if total <= f32::EPSILON {
@@ -277,23 +247,13 @@ fn kmeans(points: &[[f32; 3]], weights: &[f32], k: usize) -> (Vec<[f32; 3]>, Vec
 }
 
 /// Couleurs dominantes d'une image RVB (`bpp` = 3) ou RVBA (`bpp` = 4).
-pub fn dominant_colors(
-    px: &[u8],
-    w: u32,
-    h: u32,
-    bpp: usize,
-    opts: &PaletteOptions,
-) -> Vec<Swatch> {
+pub fn dominant_colors(px: &[u8], w: u32, h: u32, bpp: usize, opts: &PaletteOptions) -> Vec<Swatch> {
     let (w, h) = (w as usize, h as usize);
     if w == 0 || h == 0 || px.len() < w * h * bpp || bpp < 3 {
         return Vec::new();
     }
     let opts = opts.sanitized();
-    let (x0, y0, x1, y1) = if opts.ignore_bars {
-        content_box(px, w, h, bpp)
-    } else {
-        (0, 0, w, h)
-    };
+    let (x0, y0, x1, y1) = if opts.ignore_bars { content_box(px, w, h, bpp) } else { (0, 0, w, h) };
     let area = (x1 - x0) * (y1 - y0);
     let step = ((area as f64 / MAX_SAMPLES as f64).sqrt().ceil() as usize).max(1);
 
@@ -302,11 +262,7 @@ pub fn dominant_colors(
     for y in (y0..y1).step_by(step) {
         for x in (x0..x1).step_by(step) {
             let i = (y * w + x) * bpp;
-            points.push(linear_rgb_to_lab(
-                lut[px[i] as usize],
-                lut[px[i + 1] as usize],
-                lut[px[i + 2] as usize],
-            ));
+            points.push(linear_rgb_to_lab(lut[px[i] as usize], lut[px[i + 1] as usize], lut[px[i + 2] as usize]));
         }
     }
 
@@ -343,11 +299,7 @@ pub fn sort_swatches(sw: &mut [Swatch], sort: PaletteSort) {
                 let chroma = (s.lab[1].powi(2) + s.lab[2].powi(2)).sqrt();
                 let hue = s.lab[2].atan2(s.lab[1]).to_degrees().rem_euclid(360.0);
                 // Les quasi-gris (chroma < 8) vont à la fin, du sombre au clair.
-                if chroma < 8.0 {
-                    (1, s.lab[0])
-                } else {
-                    (0, hue)
-                }
+                if chroma < 8.0 { (1, s.lab[0]) } else { (0, hue) }
             };
             let (ka, kb) = (key(a), key(b));
             ka.0.cmp(&kb.0).then(ka.1.total_cmp(&kb.1))
@@ -376,18 +328,8 @@ mod tests {
     #[test]
     fn aller_retour_lab() {
         let lut = srgb_to_linear_lut();
-        for rgb in [
-            [0u8, 0, 0],
-            [255, 255, 255],
-            [224, 164, 59],
-            [12, 200, 90],
-            [128, 128, 128],
-        ] {
-            let lab = linear_rgb_to_lab(
-                lut[rgb[0] as usize],
-                lut[rgb[1] as usize],
-                lut[rgb[2] as usize],
-            );
+        for rgb in [[0u8, 0, 0], [255, 255, 255], [224, 164, 59], [12, 200, 90], [128, 128, 128]] {
+            let lab = linear_rgb_to_lab(lut[rgb[0] as usize], lut[rgb[1] as usize], lut[rgb[2] as usize]);
             assert_eq!(lab_to_srgb(lab), rgb, "{lab:?}");
         }
         let white = linear_rgb_to_lab(1.0, 1.0, 1.0);
@@ -396,20 +338,8 @@ mod tests {
 
     #[test]
     fn retrouve_les_couleurs_et_leurs_parts() {
-        let (px, w) = bands(
-            &[
-                ([200, 30, 30], 50),
-                ([20, 60, 200], 30),
-                ([240, 220, 40], 20),
-            ],
-            40,
-        );
-        let opts = PaletteOptions {
-            count: 3,
-            sort: PaletteSort::Share,
-            ignore_bars: false,
-            ..Default::default()
-        };
+        let (px, w) = bands(&[([200, 30, 30], 50), ([20, 60, 200], 30), ([240, 220, 40], 20)], 40);
+        let opts = PaletteOptions { count: 3, sort: PaletteSort::Share, ignore_bars: false, ..Default::default() };
         let p = dominant_colors(&px, w as u32, 40, 3, &opts);
         assert_eq!(p.len(), 3);
         assert_eq!(p[0].rgb, [200, 30, 30]);
@@ -421,15 +351,9 @@ mod tests {
 
     #[test]
     fn deterministe_et_rvba() {
-        let (px, w) = bands(
-            &[([10, 120, 10], 33), ([90, 90, 90], 33), ([250, 140, 0], 34)],
-            30,
-        );
+        let (px, w) = bands(&[([10, 120, 10], 33), ([90, 90, 90], 33), ([250, 140, 0], 34)], 30);
         let rgba: Vec<u8> = px.chunks(3).flat_map(|c| [c[0], c[1], c[2], 255]).collect();
-        let o = PaletteOptions {
-            count: 3,
-            ..Default::default()
-        };
+        let o = PaletteOptions { count: 3, ..Default::default() };
         let a = dominant_colors(&px, w as u32, 30, 3, &o);
         let b = dominant_colors(&rgba, w as u32, 30, 4, &o);
         assert_eq!(a, b);
@@ -448,54 +372,19 @@ mod tests {
             }
         }
         assert_eq!(content_box(&px, w, h, 3), (0, 5, 64, 31));
-        let p = dominant_colors(
-            &px,
-            w as u32,
-            h as u32,
-            3,
-            &PaletteOptions {
-                count: 2,
-                ..Default::default()
-            },
-        );
+        let p = dominant_colors(&px, w as u32, h as u32, 3, &PaletteOptions { count: 2, ..Default::default() });
         assert_eq!(p.len(), 1, "une seule couleur hors bandes : {p:?}");
         assert_eq!(p[0].rgb, [30, 140, 160]);
-        let p = dominant_colors(
-            &px,
-            w as u32,
-            h as u32,
-            3,
-            &PaletteOptions {
-                count: 2,
-                ignore_bars: false,
-                ..Default::default()
-            },
-        );
+        let p = dominant_colors(&px, w as u32, h as u32, 3, &PaletteOptions { count: 2, ignore_bars: false, ..Default::default() });
         assert!(p.iter().any(|s| s.rgb == [0, 0, 0]));
     }
 
     #[test]
     fn tri_par_teinte_et_luminosite() {
-        let (px, w) = bands(
-            &[
-                ([0, 0, 255], 25),
-                ([255, 0, 0], 25),
-                ([0, 200, 0], 25),
-                ([128, 128, 128], 25),
-            ],
-            10,
-        );
-        let o = |sort| PaletteOptions {
-            count: 4,
-            sort,
-            ignore_bars: false,
-            ..Default::default()
-        };
+        let (px, w) = bands(&[([0, 0, 255], 25), ([255, 0, 0], 25), ([0, 200, 0], 25), ([128, 128, 128], 25)], 10);
+        let o = |sort| PaletteOptions { count: 4, sort, ignore_bars: false, ..Default::default() };
         let hue = dominant_colors(&px, w as u32, 10, 3, &o(PaletteSort::Hue));
-        assert_eq!(
-            hue.iter().map(|s| s.hex.as_str()).collect::<Vec<_>>(),
-            vec!["#FF0000", "#00C800", "#0000FF", "#808080"]
-        );
+        assert_eq!(hue.iter().map(|s| s.hex.as_str()).collect::<Vec<_>>(), vec!["#FF0000", "#00C800", "#0000FF", "#808080"]);
         let light = dominant_colors(&px, w as u32, 10, 3, &o(PaletteSort::Lightness));
         assert_eq!(light[0].hex, "#0000FF");
     }
@@ -503,42 +392,19 @@ mod tests {
     #[test]
     fn le_mode_accents_fait_ressortir_la_petite_couleur_saturee() {
         // Dégradé de gris (le décor) et un petit manteau rouge (4 %), 2 couleurs demandées.
-        let mut cols: Vec<([u8; 3], usize)> = (0..96)
-            .map(|i| ([30 + 2 * i as u8, 30 + 2 * i as u8, 30 + 2 * i as u8], 1))
-            .collect();
+        let mut cols: Vec<([u8; 3], usize)> = (0..96).map(|i| ([30 + 2 * i as u8, 30 + 2 * i as u8, 30 + 2 * i as u8], 1)).collect();
         cols.push(([200, 20, 25], 4));
         let (px, w) = bands(&cols, 30);
-        let acc = PaletteOptions {
-            count: 2,
-            ignore_bars: false,
-            weighting: PaletteWeighting::Accents,
-            ..Default::default()
-        };
+        let acc = PaletteOptions { count: 2, ignore_bars: false, weighting: PaletteWeighting::Accents, ..Default::default() };
         let b = dominant_colors(&px, w as u32, 30, 3, &acc);
-        let red = b
-            .iter()
-            .find(|s| s.rgb[0] > 180 && s.rgb[1] < 60)
-            .expect("accent trouvé");
-        assert!(
-            (red.share - 0.04).abs() < 0.01,
-            "la part reste une part de surface : {}",
-            red.share
-        );
+        let red = b.iter().find(|s| s.rgb[0] > 180 && s.rgb[1] < 60).expect("accent trouvé");
+        assert!((red.share - 0.04).abs() < 0.01, "la part reste une part de surface : {}", red.share);
     }
 
     #[test]
     fn image_unie_et_entrees_invalides() {
         let px = vec![77u8; 10 * 10 * 3];
-        let p = dominant_colors(
-            &px,
-            10,
-            10,
-            3,
-            &PaletteOptions {
-                count: 8,
-                ..Default::default()
-            },
-        );
+        let p = dominant_colors(&px, 10, 10, 3, &PaletteOptions { count: 8, ..Default::default() });
         assert_eq!(p.len(), 1);
         assert_eq!(p[0].rgb, [77, 77, 77]);
         assert!(dominant_colors(&px, 20, 20, 3, &PaletteOptions::default()).is_empty());

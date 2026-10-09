@@ -66,11 +66,7 @@ pub struct ImportedCuts {
 impl ImportedCuts {
     /// Nom du clip qui commence à `frame`, ou du plan qui le contient.
     pub fn name_at(&self, frame: u64) -> Option<&str> {
-        self.names
-            .range(..=frame)
-            .next_back()
-            .map(|(_, n)| n.as_str())
-            .filter(|n| !n.is_empty())
+        self.names.range(..=frame).next_back().map(|(_, n)| n.as_str()).filter(|n| !n.is_empty())
     }
 }
 
@@ -129,10 +125,7 @@ pub fn parse_edl(text: &str) -> Result<EditList, String> {
             continue;
         }
         let tcs = &tok[tok.len() - 4..];
-        if !tcs
-            .iter()
-            .all(|t| t.len() >= 11 && t.bytes().filter(u8::is_ascii_digit).count() >= 8)
-        {
+        if !tcs.iter().all(|t| t.len() >= 11 && t.bytes().filter(u8::is_ascii_digit).count() >= 8) {
             continue;
         }
         // Piste : V, V2, A/V, B (image et son)… mais pas A, A2, AA.
@@ -149,24 +142,12 @@ pub fn parse_edl(text: &str) -> Result<EditList, String> {
             events.pop();
         }
         last_no = Some(tok[0].to_string());
-        events.push(EditEvent {
-            start: 0,
-            label: Some(tcs[2].to_string()),
-            name: String::new(),
-        });
+        events.push(EditEvent { start: 0, label: Some(tcs[2].to_string()), name: String::new() });
     }
     if events.is_empty() {
         return Err("No video event found in this EDL file.".into());
     }
-    Ok(EditList {
-        format: "EDL",
-        rate: 0.0,
-        drop,
-        start: None,
-        events,
-        end: None,
-        warnings: Vec::new(),
-    })
+    Ok(EditList { format: "EDL", rate: 0.0, drop, start: None, events, end: None, warnings: Vec::new() })
 }
 
 /// Convertit les timecodes d'une EDL avec la cadence du film.
@@ -176,11 +157,7 @@ fn resolve_edl(mut l: EditList, rate: u32, film_drop: bool) -> Result<EditList, 
     let mut events = Vec::with_capacity(l.events.len());
     for e in l.events {
         match e.label.as_deref().and_then(|t| parse_label(t, rate, drop)) {
-            Some(start) => events.push(EditEvent {
-                start,
-                label: None,
-                name: e.name,
-            }),
+            Some(start) => events.push(EditEvent { start, label: None, name: e.name }),
             None => bad += 1,
         }
     }
@@ -201,27 +178,18 @@ fn rational(v: &Value) -> Option<(f64, f64)> {
 }
 
 fn otio_duration(item: &Value) -> Option<(f64, f64)> {
-    item.get("source_range")
-        .and_then(|r| r.get("duration"))
-        .and_then(rational)
-        .or_else(|| {
-            // Clip sans source_range : durée de son média.
-            item.get("media_reference")
-                .and_then(|m| m.get("available_range"))
-                .and_then(|r| r.get("duration"))
-                .and_then(rational)
-        })
+    item.get("source_range").and_then(|r| r.get("duration")).and_then(rational).or_else(|| {
+        // Clip sans source_range : durée de son média.
+        item.get("media_reference")
+            .and_then(|m| m.get("available_range"))
+            .and_then(|r| r.get("duration"))
+            .and_then(rational)
+    })
 }
 
 pub fn parse_otio(text: &str) -> Result<EditList, String> {
-    let root: Value =
-        serde_json::from_str(text).map_err(|e| format!("Unreadable OTIO file: {e}"))?;
-    let schema = |v: &Value| {
-        v.get("OTIO_SCHEMA")
-            .and_then(|s| s.as_str())
-            .unwrap_or("")
-            .to_string()
-    };
+    let root: Value = serde_json::from_str(text).map_err(|e| format!("Unreadable OTIO file: {e}"))?;
+    let schema = |v: &Value| v.get("OTIO_SCHEMA").and_then(|s| s.as_str()).unwrap_or("").to_string();
     // Le fichier peut être une timeline, ou une collection contenant une timeline.
     let timeline = if schema(&root).starts_with("Timeline") {
         &root
@@ -242,42 +210,22 @@ pub fn parse_otio(text: &str) -> Result<EditList, String> {
     let mut events = Vec::new();
     let mut end: u64 = 0;
     let mut video_tracks = 0;
-    for track in tracks
-        .iter()
-        .filter(|t| t.get("kind").and_then(|k| k.as_str()) == Some("Video"))
-    {
+    for track in tracks.iter().filter(|t| t.get("kind").and_then(|k| k.as_str()) == Some("Video")) {
         video_tracks += 1;
         let mut pos = 0.0f64;
-        for item in track
-            .get("children")
-            .and_then(|c| c.as_array())
-            .into_iter()
-            .flatten()
-        {
+        for item in track.get("children").and_then(|c| c.as_array()).into_iter().flatten() {
             let s = schema(item);
             if s.starts_with("Transition") {
                 continue; // une transition n'occupe pas de place dans la piste
             }
-            let Some((dur, r)) = otio_duration(item) else {
-                continue;
-            };
+            let Some((dur, r)) = otio_duration(item) else { continue };
             if rate == 0.0 {
                 rate = r;
             }
             // Valeurs exprimées en images à la cadence `r` : ramenées à la cadence de la timeline.
-            let frames = |v: f64| {
-                if (r - rate).abs() < 1e-6 {
-                    v
-                } else {
-                    v / r * rate
-                }
-            };
+            let frames = |v: f64| if (r - rate).abs() < 1e-6 { v } else { v / r * rate };
             if s.starts_with("Clip") {
-                let name = item
-                    .get("name")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("")
-                    .to_string();
+                let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("").to_string();
                 events.push((pos, name));
             } else if s.starts_with("Gap") && video_tracks == 1 {
                 events.push((pos, String::new()));
@@ -289,34 +237,18 @@ pub fn parse_otio(text: &str) -> Result<EditList, String> {
     if video_tracks == 0 {
         return Err("No video track in this OTIO file.".into());
     }
-    let start = start_rt.map(|(v, r)| {
-        if (r - rate).abs() < 1e-6 {
-            v
-        } else {
-            v / r * rate
-        }
-        .round() as u64
-    });
+    let start = start_rt.map(|(v, r)| if (r - rate).abs() < 1e-6 { v } else { v / r * rate }.round() as u64);
     let base = start.unwrap_or(0);
     let mut warnings = Vec::new();
     if video_tracks > 1 {
-        warnings.push(format!(
-            "{video_tracks} video tracks: the cuts of every track were combined."
-        ));
+        warnings.push(format!("{video_tracks} video tracks: the cuts of every track were combined."));
     }
     finish(EditList {
         format: "OTIO",
         rate,
         drop: false,
         start,
-        events: events
-            .into_iter()
-            .map(|(p, name)| EditEvent {
-                start: base + p.round() as u64,
-                label: None,
-                name,
-            })
-            .collect(),
+        events: events.into_iter().map(|(p, name)| EditEvent { start: base + p.round() as u64, label: None, name }).collect(),
         end: Some(base + end),
         warnings,
     })
@@ -334,12 +266,8 @@ fn child_text<'a>(n: roxmltree::Node<'a, 'a>, name: &str) -> Option<&'a str> {
 
 fn parse_xml_doc(text: &str) -> Result<roxmltree::Document<'_>, String> {
     // Pas de DTD : une entité définie dans le fichier ne peut rien faire gonfler.
-    let opts = roxmltree::ParsingOptions {
-        allow_dtd: false,
-        ..Default::default()
-    };
-    roxmltree::Document::parse_with_options(text, opts)
-        .map_err(|e| format!("Unreadable XML file: {e}"))
+    let opts = roxmltree::ParsingOptions { allow_dtd: false, ..Default::default() };
+    roxmltree::Document::parse_with_options(text, opts).map_err(|e| format!("Unreadable XML file: {e}"))
 }
 
 pub fn parse_fcp7_xml(text: &str) -> Result<EditList, String> {
@@ -349,37 +277,20 @@ pub fn parse_fcp7_xml(text: &str) -> Result<EditList, String> {
         .find(|n| n.has_tag_name("sequence"))
         .ok_or("No sequence in this XML file (FCP 7 XML expected).")?;
     let rate_node = child(seq, "rate");
-    let timebase: f64 = rate_node
-        .and_then(|r| child_text(r, "timebase"))
-        .and_then(|t| t.parse().ok())
-        .unwrap_or(0.0);
-    let ntsc = rate_node
-        .and_then(|r| child_text(r, "ntsc"))
-        .is_some_and(|t| t.eq_ignore_ascii_case("true"));
+    let timebase: f64 = rate_node.and_then(|r| child_text(r, "timebase")).and_then(|t| t.parse().ok()).unwrap_or(0.0);
+    let ntsc = rate_node.and_then(|r| child_text(r, "ntsc")).is_some_and(|t| t.eq_ignore_ascii_case("true"));
     if timebase <= 0.0 {
         return Err("No frame rate in this XML sequence.".into());
     }
-    let rate = if ntsc {
-        timebase * 1000.0 / 1001.0
-    } else {
-        timebase
-    };
+    let rate = if ntsc { timebase * 1000.0 / 1001.0 } else { timebase };
 
     let tc = child(seq, "timecode");
-    let drop = tc
-        .and_then(|t| child_text(t, "displayformat"))
-        .is_some_and(|d| d.eq_ignore_ascii_case("DF"));
-    let start = tc
-        .and_then(|t| child_text(t, "frame"))
-        .and_then(|f| f.parse::<u64>().ok())
-        .or_else(|| {
-            tc.and_then(|t| child_text(t, "string"))
-                .and_then(|s| parse_label(s, nominal_rate(rate), drop))
-        });
+    let drop = tc.and_then(|t| child_text(t, "displayformat")).is_some_and(|d| d.eq_ignore_ascii_case("DF"));
+    let start = tc.and_then(|t| child_text(t, "frame")).and_then(|f| f.parse::<u64>().ok()).or_else(|| {
+        tc.and_then(|t| child_text(t, "string")).and_then(|s| parse_label(s, nominal_rate(rate), drop))
+    });
 
-    let video = child(seq, "media")
-        .and_then(|m| child(m, "video"))
-        .ok_or("No video in this XML sequence.")?;
+    let video = child(seq, "media").and_then(|m| child(m, "video")).ok_or("No video in this XML sequence.")?;
     let base = start.unwrap_or(0);
     let mut events = Vec::new();
     let mut end = 0u64;
@@ -393,9 +304,7 @@ pub fn parse_fcp7_xml(text: &str) -> Result<EditList, String> {
                 last_transition_start = num("start");
                 continue;
             }
-            if !item.has_tag_name("clipitem")
-                || child_text(item, "enabled").is_some_and(|e| e.eq_ignore_ascii_case("false"))
-            {
+            if !item.has_tag_name("clipitem") || child_text(item, "enabled").is_some_and(|e| e.eq_ignore_ascii_case("false")) {
                 continue;
             }
             // -1 : le plan commence pendant un fondu ; la coupe est au début du fondu.
@@ -410,28 +319,14 @@ pub fn parse_fcp7_xml(text: &str) -> Result<EditList, String> {
                 end = end.max(e as u64);
             }
             let name = child_text(item, "name").unwrap_or("").to_string();
-            events.push(EditEvent {
-                start: base + s as u64,
-                label: None,
-                name,
-            });
+            events.push(EditEvent { start: base + s as u64, label: None, name });
         }
     }
     let mut warnings = Vec::new();
     if tracks > 1 {
-        warnings.push(format!(
-            "{tracks} video tracks: the cuts of every track were combined."
-        ));
+        warnings.push(format!("{tracks} video tracks: the cuts of every track were combined."));
     }
-    finish(EditList {
-        format: "FCP 7 XML",
-        rate,
-        drop,
-        start,
-        events,
-        end: Some(base + end),
-        warnings,
-    })
+    finish(EditList { format: "FCP 7 XML", rate, drop, start, events, end: Some(base + end), warnings })
 }
 
 /* ───────────── FCPXML ───────────── */
@@ -466,10 +361,7 @@ pub fn parse_fcpxml(text: &str) -> Result<EditList, String> {
     let frames = |t: f64| (t / fd).round() as u64;
     let start = seq.attribute("tcStart").and_then(fcpx_time).map(frames);
     let drop = seq.attribute("tcFormat") == Some("DF");
-    let spine = seq
-        .children()
-        .find(|c| c.has_tag_name("spine"))
-        .ok_or("No spine in this FCPXML sequence.")?;
+    let spine = seq.children().find(|c| c.has_tag_name("spine")).ok_or("No spine in this FCPXML sequence.")?;
 
     let mut events = Vec::new();
     let mut end = 0u64;
@@ -489,32 +381,14 @@ pub fn parse_fcpxml(text: &str) -> Result<EditList, String> {
             lanes = true;
         }
         end = end.max(frames(off + dur));
-        let name = if tag == "gap" {
-            String::new()
-        } else {
-            item.attribute("name").unwrap_or("").to_string()
-        };
-        events.push(EditEvent {
-            start: frames(off),
-            label: None,
-            name,
-        });
+        let name = if tag == "gap" { String::new() } else { item.attribute("name").unwrap_or("").to_string() };
+        events.push(EditEvent { start: frames(off), label: None, name });
     }
     let mut warnings = Vec::new();
     if lanes {
-        warnings.push(
-            "Connected clips (upper lanes) were ignored: only the main storyline is used.".into(),
-        );
+        warnings.push("Connected clips (upper lanes) were ignored: only the main storyline is used.".into());
     }
-    finish(EditList {
-        format: "FCPXML",
-        rate,
-        drop,
-        start,
-        events,
-        end: Some(end),
-        warnings,
-    })
+    finish(EditList { format: "FCPXML", rate, drop, start, events, end: Some(end), warnings })
 }
 
 /* ───────────── Lecture et calage ───────────── */
@@ -544,11 +418,7 @@ pub fn parse_edit_list(file_name: &str, text: &str) -> Result<EditList, String> 
 /// l'image `01:00:10:00 − départ du film`. Si le film n'a pas de timecode
 /// compatible (la plupart des coupes tomberaient hors du film), on aligne le
 /// premier plan de la timeline sur la première image du film.
-pub fn map_to_film(
-    list: EditList,
-    info: &VideoInfo,
-    file_name: &str,
-) -> Result<ImportedCuts, String> {
+pub fn map_to_film(list: EditList, info: &VideoInfo, file_name: &str) -> Result<ImportedCuts, String> {
     let film_rate = nominal_rate(info.fps);
     let list = if list.format == "EDL" {
         resolve_edl(list, film_rate, info.file_timecode.drop)?
@@ -567,36 +437,18 @@ pub fn map_to_film(
     }
     // Position timeline (images) → image du film, à partir d'une origine commune.
     let convert = |tl_frames: i64| -> i64 {
-        if same_rate {
-            tl_frames
-        } else {
-            (tl_frames as f64 / tl_rate * info.fps).round() as i64
-        }
+        if same_rate { tl_frames } else { (tl_frames as f64 / tl_rate * info.fps).round() as i64 }
     };
 
     let film_tc: Timecode = info.file_timecode;
     let first = list.events.first().map(|e| e.start).unwrap_or(0);
-    let by_tc: Vec<i64> = list
-        .events
-        .iter()
-        .map(|e| convert(e.start as i64) - convert(film_tc.start as i64))
-        .collect();
-    let inside = |v: &[i64]| {
-        v.iter()
-            .filter(|f| **f >= 0 && (**f as u64) < info.frame_count)
-            .count()
-    };
+    let by_tc: Vec<i64> = list.events.iter().map(|e| convert(e.start as i64) - convert(film_tc.start as i64)).collect();
+    let inside = |v: &[i64]| v.iter().filter(|f| **f >= 0 && (**f as u64) < info.frame_count).count();
     let (positions, aligned) = if inside(&by_tc) * 2 >= list.events.len() {
         (by_tc, false)
     } else {
         let origin = list.start.unwrap_or(first) as i64;
-        (
-            list.events
-                .iter()
-                .map(|e| convert(e.start as i64 - origin))
-                .collect(),
-            true,
-        )
+        (list.events.iter().map(|e| convert(e.start as i64 - origin)).collect(), true)
     };
     if aligned {
         warnings.push(format!(
@@ -620,9 +472,7 @@ pub fn map_to_film(
         }
     }
     if outside > 0 {
-        warnings.push(format!(
-            "{outside} events fall outside the film and were ignored."
-        ));
+        warnings.push(format!("{outside} events fall outside the film and were ignored."));
     }
     if names.is_empty() {
         return Err("None of the events of this edit list fall inside the film.".into());
@@ -675,11 +525,7 @@ FCM: NON-DROP FRAME
         assert_eq!(c.cuts, vec![112, 262]);
         assert_eq!(c.shots, 3);
         assert_eq!(c.name_at(0), Some("A001_C003.mov"));
-        assert_eq!(
-            c.name_at(150),
-            Some("B002_C010.mov"),
-            "fondu : le nom de la ligne D"
-        );
+        assert_eq!(c.name_at(150), Some("B002_C010.mov"), "fondu : le nom de la ligne D");
         assert_eq!(c.name_at(300), Some("C003.mov"));
         assert!(c.warnings.is_empty(), "{:?}", c.warnings);
     }
@@ -697,11 +543,7 @@ FCM: NON-DROP FRAME
         let edl = "FCM: DROP FRAME\n001  AX V C 00:00:00;00 00:01:00;02 01:00:00;00 01:01:00;02\n002  AX V C 00:00:00;00 00:00:01;00 01:01:00;02 01:01:01;02\n";
         let info = film(30000, 1001, 30 * 120, "01:00:00;00");
         let c = map_to_film(parse_edl(edl).unwrap(), &info, "t.edl").unwrap();
-        assert_eq!(
-            c.cuts,
-            vec![1800],
-            "01:01:00;02 = 1 800 images après 01:00:00;00"
-        );
+        assert_eq!(c.cuts, vec![1800], "01:01:00;02 = 1 800 images après 01:00:00;00");
     }
 
     #[test]
@@ -720,13 +562,7 @@ FCM: NON-DROP FRAME
             ]}]}}"#;
         let l = parse_otio(otio).unwrap();
         assert_eq!(l.start, Some(86_400));
-        assert_eq!(
-            l.events
-                .iter()
-                .map(|e| e.start - 86_400)
-                .collect::<Vec<_>>(),
-            vec![0, 48, 72]
-        );
+        assert_eq!(l.events.iter().map(|e| e.start - 86_400).collect::<Vec<_>>(), vec![0, 48, 72]);
         let c = map_to_film(l, &film(24, 1, 200, "01:00:00:00"), "t.otio").unwrap();
         assert_eq!(c.cuts, vec![48, 72]);
         assert_eq!(c.name_at(100), Some("B"));
@@ -749,16 +585,9 @@ FCM: NON-DROP FRAME
         let l = parse_fcp7_xml(xml).unwrap();
         assert!((l.rate - 23.976).abs() < 0.001);
         let c = map_to_film(l, &film(24000, 1001, 240, "01:00:00:00"), "t.xml").unwrap();
-        assert_eq!(
-            c.cuts,
-            vec![40, 130],
-            "fondu : coupe au début du fondu ; clip désactivé ignoré"
-        );
+        assert_eq!(c.cuts, vec![40, 130], "fondu : coupe au début du fondu ; clip désactivé ignoré");
         assert_eq!(c.name_at(41), Some("B001.mov"));
-        assert!(
-            parse_xml_doc("<!DOCTYPE x [<!ENTITY a \"aaaa\">]><x>&a;</x>").is_err(),
-            "DTD refusée"
-        );
+        assert!(parse_xml_doc("<!DOCTYPE x [<!ENTITY a \"aaaa\">]><x>&a;</x>").is_err(), "DTD refusée");
     }
 
     #[test]
@@ -783,12 +612,7 @@ FCM: NON-DROP FRAME
         let otio = r#"{"OTIO_SCHEMA":"Timeline.1","tracks":{"children":[{"kind":"Video","children":[
             {"OTIO_SCHEMA":"Clip.2","name":"A","source_range":{"duration":{"rate":50.0,"value":100}}},
             {"OTIO_SCHEMA":"Clip.2","name":"B","source_range":{"duration":{"rate":50.0,"value":100}}}]}]}}"#;
-        let c = map_to_film(
-            parse_otio(otio).unwrap(),
-            &film(25, 1, 500, "00:00:00:00"),
-            "t.otio",
-        )
-        .unwrap();
+        let c = map_to_film(parse_otio(otio).unwrap(), &film(25, 1, 500, "00:00:00:00"), "t.otio").unwrap();
         assert_eq!(c.cuts, vec![50], "100 images à 50 i/s = 50 images à 25 i/s");
         assert!(c.warnings.iter().any(|w| w.contains("fps")));
         assert!(parse_edit_list("a.txt", "").is_err());
@@ -796,9 +620,6 @@ FCM: NON-DROP FRAME
         assert!(parse_otio("{").is_err());
         let far = "001  AX V C 00:00:00:00 00:00:01:00 05:00:00:00 05:00:01:00\n";
         let info = film(25, 1, 10, "01:00:00:00");
-        assert!(
-            map_to_film(parse_edl(far).unwrap(), &info, "t.edl").is_ok(),
-            "un seul événement : aligné"
-        );
+        assert!(map_to_film(parse_edl(far).unwrap(), &info, "t.edl").is_ok(), "un seul événement : aligné");
     }
 }

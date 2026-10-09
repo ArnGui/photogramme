@@ -24,11 +24,7 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
     state.settings()
 }
 
-pub fn apply_settings<R: Runtime>(
-    app: &AppHandle<R>,
-    state: &AppState,
-    new: Settings,
-) -> Result<Settings, String> {
+pub fn apply_settings<R: Runtime>(app: &AppHandle<R>, state: &AppState, new: Settings) -> Result<Settings, String> {
     let new = new.sanitized();
     if let Some(dir) = &new.output_dir {
         let d = Path::new(dir);
@@ -51,21 +47,14 @@ pub fn apply_settings<R: Runtime>(
 /// désigner n'importe quel dossier existant, qui deviendrait lisible par
 /// le protocole asset.
 #[tauri::command]
-pub fn update_settings(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    mut new: Settings,
-) -> Result<Settings, String> {
+pub fn update_settings(app: AppHandle, state: State<'_, AppState>, mut new: Settings) -> Result<Settings, String> {
     new.output_dir = state.settings()?.output_dir;
     apply_settings(&app, &state, new)
 }
 
 /// Sélecteur du dossier de sortie, côté Rust.
 #[tauri::command]
-pub async fn pick_output_dir(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Option<Settings>, String> {
+pub async fn pick_output_dir(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Settings>, String> {
     let a = app.clone();
     let current = state.settings()?.output_dir;
     let picked = tauri::async_runtime::spawn_blocking(move || {
@@ -81,9 +70,7 @@ pub async fn pick_output_dir(
     })
     .await
     .map_err(|e| e.to_string())?;
-    let Some(dir) = picked.and_then(|f| f.into_path().ok()) else {
-        return Ok(None);
-    };
+    let Some(dir) = picked.and_then(|f| f.into_path().ok()) else { return Ok(None) };
     let mut s = state.settings()?;
     s.output_dir = Some(dir.to_string_lossy().to_string());
     apply_settings(&app, &state, s).map(Some)
@@ -97,19 +84,13 @@ pub fn list_presets(state: State<'_, AppState>) -> Vec<OverlayPreset> {
 }
 
 #[tauri::command]
-pub fn save_preset(
-    state: State<'_, AppState>,
-    preset: OverlayPreset,
-) -> Result<Vec<OverlayPreset>, String> {
+pub fn save_preset(state: State<'_, AppState>, preset: OverlayPreset) -> Result<Vec<OverlayPreset>, String> {
     overlay::save_preset(&state.presets_dir, &preset)?;
     Ok(overlay::list_presets(&state.presets_dir))
 }
 
 #[tauri::command]
-pub fn delete_preset(
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<Vec<OverlayPreset>, String> {
+pub fn delete_preset(state: State<'_, AppState>, name: String) -> Result<Vec<OverlayPreset>, String> {
     overlay::delete_preset(&state.presets_dir, &name)?;
     Ok(overlay::list_presets(&state.presets_dir))
 }
@@ -134,10 +115,7 @@ pub struct AppInfo {
 
 pub fn kofi_url() -> Option<String> {
     let h = KOFI_HANDLE.trim();
-    let valid = !h.is_empty()
-        && h.len() <= 64
-        && h.chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+    let valid = !h.is_empty() && h.len() <= 64 && h.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     valid.then(|| format!("https://ko-fi.com/{h}"))
 }
 
@@ -192,26 +170,18 @@ pub struct UpdateInfo {
 /// Interroge GitHub (latest.json de la dernière release). Aucune donnée
 /// n'est envoyée en dehors de la requête elle-même.
 #[tauri::command]
-pub async fn check_update(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<UpdateInfo, String> {
+pub async fn check_update(app: AppHandle, state: State<'_, AppState>) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
     if !state.updates_enabled {
         return Err("Automatic updates are not set up in this build.".into());
     }
     let updater = app.updater().map_err(|e| e.to_string())?;
-    let found = updater
-        .check()
-        .await
-        .map_err(|e| format!("Update check failed: {e}"))?;
+    let found = updater.check().await.map_err(|e| format!("Update check failed: {e}"))?;
     let info = UpdateInfo {
         current,
         version: found.as_ref().map(|u| u.version.clone()),
         notes: found.as_ref().and_then(|u| u.body.clone()),
-        date: found
-            .as_ref()
-            .and_then(|u| u.date.map(|d| d.date().to_string())),
+        date: found.as_ref().and_then(|u| u.date.map(|d| d.date().to_string())),
     };
     *lock(&state.pending_update)? = found;
     Ok(info)
@@ -228,14 +198,8 @@ pub enum UpdateEvent {
 /// relance l'application. Sous Windows, l'installeur ferme l'application
 /// puis la relance lui-même.
 #[tauri::command]
-pub async fn install_update(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    on_event: Channel<UpdateEvent>,
-) -> Result<(), String> {
-    let update = lock(&state.pending_update)?
-        .take()
-        .ok_or("Check for updates first.")?;
+pub async fn install_update(app: AppHandle, state: State<'_, AppState>, on_event: Channel<UpdateEvent>) -> Result<(), String> {
+    let update = lock(&state.pending_update)?.take().ok_or("Check for updates first.")?;
     // Plus aucun FFmpeg ne doit tourner quand l'installeur remplace les fichiers.
     state.stop_jobs();
     let mut downloaded = 0u64;
@@ -250,22 +214,13 @@ pub async fn install_update(
         .await
         .map_err(|e| format!("Download failed: {e}"))?;
     let _ = on_event.send(UpdateEvent::Installing);
-    update
-        .install(bytes)
-        .map_err(|e| format!("Installation failed: {e}"))?;
+    update.install(bytes).map_err(|e| format!("Installation failed: {e}"))?;
     app.restart();
 }
 
 /// Clé publique de mise à jour présente dans la configuration compilée ?
 pub fn updater_pubkey(config: &tauri::Config) -> Option<String> {
-    let key = config
-        .plugins
-        .0
-        .get("updater")?
-        .get("pubkey")?
-        .as_str()?
-        .trim()
-        .to_string();
+    let key = config.plugins.0.get("updater")?.get("pubkey")?.as_str()?.trim().to_string();
     (!key.is_empty()).then_some(key)
 }
 
@@ -281,9 +236,7 @@ mod tests {
         if KOFI_HANDLE.is_empty() {
             assert_eq!(link_url(Link::Kofi), None);
         } else {
-            assert!(link_url(Link::Kofi)
-                .unwrap()
-                .starts_with("https://ko-fi.com/"));
+            assert!(link_url(Link::Kofi).unwrap().starts_with("https://ko-fi.com/"));
         }
     }
 
@@ -291,18 +244,9 @@ mod tests {
     fn cle_de_mise_a_jour() {
         let mut c: tauri::Config = serde_json::from_str(r#"{"identifier":"a.b"}"#).unwrap();
         assert_eq!(updater_pubkey(&c), None);
-        c.plugins
-            .0
-            .insert("updater".into(), serde_json::json!({"pubkey": "  "}));
-        assert_eq!(
-            updater_pubkey(&c),
-            None,
-            "clé vide : mises à jour désactivées"
-        );
-        c.plugins.0.insert(
-            "updater".into(),
-            serde_json::json!({"pubkey": "dW50cnVzdGVk"}),
-        );
+        c.plugins.0.insert("updater".into(), serde_json::json!({"pubkey": "  "}));
+        assert_eq!(updater_pubkey(&c), None, "clé vide : mises à jour désactivées");
+        c.plugins.0.insert("updater".into(), serde_json::json!({"pubkey": "dW50cnVzdGVk"}));
         assert_eq!(updater_pubkey(&c).as_deref(), Some("dW50cnVzdGVk"));
     }
 }

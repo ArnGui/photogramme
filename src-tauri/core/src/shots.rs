@@ -34,22 +34,12 @@ pub const MANUAL_SCORE: f32 = -1.0;
 /// Plans délimités par une liste de coupes (importées), plus les coupes
 /// ajoutées à la main. Aucune durée minimale : ce sont des coupes voulues.
 pub fn from_cuts(cuts: &[u64], frames: u64, extra: &[u64]) -> Vec<Shot> {
-    let mut all: Vec<(u64, f32)> = cuts
-        .iter()
-        .chain(extra)
-        .map(|&c| (c, MANUAL_SCORE))
-        .collect();
+    let mut all: Vec<(u64, f32)> = cuts.iter().chain(extra).map(|&c| (c, MANUAL_SCORE)).collect();
     build(&mut all, frames)
 }
 
 /// Découpe en plans d'après les scores, plus les coupes ajoutées à la main.
-pub fn detect_with(
-    scores: &[f32],
-    frames: u64,
-    threshold: f32,
-    min_len: u64,
-    extra: &[u64],
-) -> Vec<Shot> {
+pub fn detect_with(scores: &[f32], frames: u64, threshold: f32, min_len: u64, extra: &[u64]) -> Vec<Shot> {
     let mut cuts: Vec<(u64, f32)> = detect(scores, frames, threshold, min_len)
         .into_iter()
         .skip(1)
@@ -71,21 +61,11 @@ fn build(cuts: &mut Vec<(u64, f32)>, frames: u64) -> Vec<Shot> {
     let mut start = 0u64;
     let mut score = 0.0f32;
     for (i, (cut, s)) in cuts.iter().enumerate() {
-        shots.push(Shot {
-            index: i as u32 + 1,
-            start,
-            end: *cut,
-            score,
-        });
+        shots.push(Shot { index: i as u32 + 1, start, end: *cut, score });
         start = *cut;
         score = *s;
     }
-    shots.push(Shot {
-        index: shots.len() as u32 + 1,
-        start,
-        end: frames,
-        score,
-    });
+    shots.push(Shot { index: shots.len() as u32 + 1, start, end: frames, score });
     shots
 }
 
@@ -118,21 +98,11 @@ pub fn detect(scores: &[f32], frames: u64, threshold: f32, min_len: u64) -> Vec<
     let mut start = 0u64;
     let mut score = 0.0f32;
     for (i, (cut, s)) in cuts.into_iter().enumerate() {
-        shots.push(Shot {
-            index: i as u32 + 1,
-            start,
-            end: cut,
-            score,
-        });
+        shots.push(Shot { index: i as u32 + 1, start, end: cut, score });
         start = cut;
         score = s;
     }
-    shots.push(Shot {
-        index: shots.len() as u32 + 1,
-        start,
-        end: frames,
-        score,
-    });
+    shots.push(Shot { index: shots.len() as u32 + 1, start, end: frames, score });
     shots
 }
 
@@ -144,17 +114,11 @@ mod tests {
     fn coupes_ajoutees_et_importees() {
         let sc = scores(100, &[(40, 30.0)]);
         let s = detect_with(&sc, 100, 10.0, 5, &[10, 40, 0, 100, 150]);
-        assert_eq!(
-            s.iter().map(|x| (x.start, x.end)).collect::<Vec<_>>(),
-            vec![(0, 10), (10, 40), (40, 100)]
-        );
+        assert_eq!(s.iter().map(|x| (x.start, x.end)).collect::<Vec<_>>(), vec![(0, 10), (10, 40), (40, 100)]);
         assert_eq!(s[1].score, MANUAL_SCORE);
         assert_eq!(s[2].score, 30.0, "la coupe détectée garde son score");
         let s = from_cuts(&[50, 20], 60, &[55]);
-        assert_eq!(
-            s.iter().map(|x| x.start).collect::<Vec<_>>(),
-            vec![0, 20, 50, 55]
-        );
+        assert_eq!(s.iter().map(|x| x.start).collect::<Vec<_>>(), vec![0, 20, 50, 55]);
         assert_eq!(s.last().unwrap().end, 60);
         assert!(from_cuts(&[], 0, &[]).is_empty());
     }
@@ -176,11 +140,7 @@ mod tests {
         assert_eq!(spans, vec![(0, 48), (48, 72), (72, 120)]);
         assert_eq!(p[1].score, 26.0);
         assert_eq!(p.iter().map(|x| x.index).collect::<Vec<_>>(), vec![1, 2, 3]);
-        assert_eq!(
-            detect(&s, 120, 10.1, 1).len(),
-            2,
-            "10 < 10,1 : pas de coupe"
-        );
+        assert_eq!(detect(&s, 120, 10.1, 1).len(), 2, "10 < 10,1 : pas de coupe");
     }
 
     #[test]

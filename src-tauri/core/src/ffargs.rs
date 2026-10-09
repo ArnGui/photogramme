@@ -40,19 +40,11 @@ pub fn rotation_filter(rotation: u32) -> Option<&'static str> {
 /// Sans `in_color_matrix` explicite, une vidéo HD non taguée serait convertie
 /// en BT.601 : léger décalage de teinte, et palette faussée.
 pub fn geometry_filter(info: &VideoInfo, pix_fmt: &str, out_w: u32, out_h: u32) -> String {
-    let (sw, sh) = if info.quarter_turn() {
-        (out_h, out_w)
-    } else {
-        (out_w, out_h)
-    };
+    let (sw, sh) = if info.quarter_turn() { (out_h, out_w) } else { (out_w, out_h) };
     let resized = sw != info.width || sh != info.height;
     // Redimensionnement (anamorphose, vignettes) : lanczos ; sinon simple
     // conversion de couleurs, bicubic suffit (aucun pixel interpolé).
-    let flags = if resized {
-        "lanczos+accurate_rnd+full_chroma_int"
-    } else {
-        "bicubic+accurate_rnd+full_chroma_int"
-    };
+    let flags = if resized { "lanczos+accurate_rnd+full_chroma_int" } else { "bicubic+accurate_rnd+full_chroma_int" };
     let mut f = format!(
         "scale=w={sw}:h={sh}:in_color_matrix={}:in_range={}:out_range=pc:flags={flags},format={pix_fmt}",
         info.color_matrix, info.color_range
@@ -75,17 +67,10 @@ pub fn rgb_filter(info: &VideoInfo) -> String {
 
 /// Début commun : sans bannière, sans entrée standard, sans rotation automatique.
 pub fn input_args(info: &VideoInfo, seek: Option<f64>) -> Vec<String> {
-    let mut a: Vec<String> = [
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-nostdin",
-        "-nostats",
-        "-noautorotate",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
+    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-nostats", "-noautorotate"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     if let Some(ss) = seek {
         a.push("-ss".into());
         a.push(format!("{ss:.6}"));
@@ -109,30 +94,26 @@ pub fn capture_args_fmt(info: &VideoInfo, frame: u64, pix_fmt: &str) -> Vec<Stri
 }
 
 /// Capture d'une image à une taille donnée (vignettes, vérification de synchro).
-pub fn capture_args_sized(
-    info: &VideoInfo,
-    frame: u64,
-    pix_fmt: &str,
-    w: u32,
-    h: u32,
-) -> Vec<String> {
+pub fn capture_args_sized(info: &VideoInfo, frame: u64, pix_fmt: &str, w: u32, h: u32) -> Vec<String> {
     let mut a = input_args(info, Some(seek_seconds(frame, info.fps_num, info.fps_den)));
-    a.extend([
-        "-map".into(),
-        "0:v:0".into(),
-        "-frames:v".into(),
-        "1".into(),
-        "-an".into(),
-        "-sn".into(),
-        "-dn".into(),
-        "-vf".into(),
-        geometry_filter(info, pix_fmt, w, h),
-        "-f".into(),
-        "rawvideo".into(),
-        "-pix_fmt".into(),
-        pix_fmt.into(),
-        "-".into(),
-    ]);
+    a.extend(
+        [
+            "-map".into(),
+            "0:v:0".into(),
+            "-frames:v".into(),
+            "1".into(),
+            "-an".into(),
+            "-sn".into(),
+            "-dn".into(),
+            "-vf".into(),
+            geometry_filter(info, pix_fmt, w, h),
+            "-f".into(),
+            "rawvideo".into(),
+            "-pix_fmt".into(),
+            pix_fmt.into(),
+            "-".into(),
+        ],
+    );
     a
 }
 
@@ -145,8 +126,7 @@ pub fn expected_rgb_len(info: &VideoInfo) -> usize {
 pub fn fit_width(info: &VideoInfo, width: u32) -> (u32, u32) {
     let w = width.clamp(2, info.out_width.max(2));
     let w = (w / 2 * 2).max(2);
-    let h = ((w as f64 * info.out_height as f64 / info.out_width as f64 / 2.0).round() as u32 * 2)
-        .max(2);
+    let h = ((w as f64 * info.out_height as f64 / info.out_width as f64 / 2.0).round() as u32 * 2).max(2);
     (w, h)
 }
 
@@ -188,10 +168,7 @@ mod tests {
         assert!(f.contains("in_color_matrix=bt709"));
         assert!(f.contains("in_range=tv"));
         assert!(f.contains("w=1920:h=1080"));
-        assert!(
-            f.contains("flags=bicubic"),
-            "pas de redimensionnement : {f}"
-        );
+        assert!(f.contains("flags=bicubic"), "pas de redimensionnement : {f}");
         assert!(f.ends_with("format=rgb24"));
     }
 
@@ -210,10 +187,7 @@ mod tests {
         i.out_height = 1920;
         let f = rgb_filter(&i);
         // On redimensionne dans l'orientation du flux, puis on tourne.
-        assert!(
-            f.contains("w=1920:h=1080") && f.ends_with("format=rgb24,transpose=cclock"),
-            "{f}"
-        );
+        assert!(f.contains("w=1920:h=1080") && f.ends_with("format=rgb24,transpose=cclock"), "{f}");
         assert_eq!(expected_rgb_len(&i), 1080 * 1920 * 3);
         let small = geometry_filter(&i, "rgb24", 180, 320);
         assert!(small.contains("w=320:h=180"), "{small}");

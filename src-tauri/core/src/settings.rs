@@ -180,10 +180,7 @@ pub struct UpdateSettings {
 
 impl Default for UpdateSettings {
     fn default() -> Self {
-        Self {
-            check_at_startup: true,
-            skipped: None,
-        }
+        Self { check_at_startup: true, skipped: None }
     }
 }
 
@@ -290,12 +287,7 @@ pub struct ShotSettings {
 
 impl Default for ShotSettings {
     fn default() -> Self {
-        Self {
-            threshold: 10.0,
-            min_seconds: 0.5,
-            pick: Pick::Middle,
-            decoder: DecoderPref::Auto,
-        }
+        Self { threshold: 10.0, min_seconds: 0.5, pick: Pick::Middle, decoder: DecoderPref::Auto }
     }
 }
 
@@ -309,11 +301,7 @@ pub struct BatchSettings {
 
 impl Default for BatchSettings {
     fn default() -> Self {
-        Self {
-            mode: BatchMode::Shots,
-            interval_seconds: 10.0,
-            spread_count: 24,
-        }
+        Self { mode: BatchMode::Shots, interval_seconds: 10.0, spread_count: 24 }
     }
 }
 
@@ -327,11 +315,7 @@ pub struct BarcodeSettings {
 
 impl Default for BarcodeSettings {
     fn default() -> Self {
-        Self {
-            width: 3840,
-            height: 1080,
-            mode: BarcodeMode::Vertical,
-        }
+        Self { width: 3840, height: 1080, mode: BarcodeMode::Vertical }
     }
 }
 
@@ -376,11 +360,7 @@ impl Default for Settings {
 }
 
 fn finite_or(v: f64, d: f64) -> f64 {
-    if v.is_finite() {
-        v
-    } else {
-        d
-    }
+    if v.is_finite() { v } else { d }
 }
 
 impl Settings {
@@ -391,8 +371,7 @@ impl Settings {
             self.output_dir = None;
         }
         let s = &mut self.shots;
-        s.threshold =
-            finite_or(s.threshold as f64, 10.0).clamp(THRESHOLD_FLOOR as f64, 60.0) as f32;
+        s.threshold = finite_or(s.threshold as f64, 10.0).clamp(THRESHOLD_FLOOR as f64, 60.0) as f32;
         s.min_seconds = finite_or(s.min_seconds as f64, 0.5).clamp(0.0, 30.0) as f32;
         if let Pick::Spread { count } = &mut s.pick {
             *count = (*count).clamp(1, 100);
@@ -413,12 +392,7 @@ impl Settings {
             sh.page = SheetPage::A4;
         }
         sh.image_width = sh.image_width.clamp(640, 16_000);
-        sh.title = sh
-            .title
-            .chars()
-            .filter(|c| !c.is_control())
-            .take(200)
-            .collect();
+        sh.title = sh.title.chars().filter(|c| !c.is_control()).take(200).collect();
         if let Some(v) = &mut self.updates.skipped {
             v.retain(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
             v.truncate(40);
@@ -460,22 +434,14 @@ mod tests {
 
     fn tmp(name: &str) -> std::path::PathBuf {
         std::env::temp_dir()
-            .join(format!(
-                "photogramme-settings-{}-{name}",
-                std::process::id()
-            ))
+            .join(format!("photogramme-settings-{}-{name}", std::process::id()))
             .join(name)
     }
 
     #[test]
     fn aller_retour() {
         let p = tmp("a.json");
-        let mut s = Settings {
-            quality: 85,
-            chroma: Chroma::C420,
-            output_dir: Some(r"D:\Captures".into()),
-            ..Default::default()
-        };
+        let mut s = Settings { quality: 85, chroma: Chroma::C420, output_dir: Some(r"D:\Captures".into()), ..Default::default() };
         s.shots.pick = Pick::Spread { count: 3 };
         s.palette.count = 8;
         save(&p, &s).unwrap();
@@ -486,9 +452,7 @@ mod tests {
     #[test]
     fn skin_par_defaut_aller_retour_et_valeur_inconnue() {
         // Fichier d'avant les skins : Studio, décor actif, rien d'autre ne change.
-        let old: Settings =
-            serde_json::from_str(r#"{"quality":88,"ui":{"theme":"light","strip":"frames"}}"#)
-                .unwrap();
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"theme":"light","strip":"frames"}}"#).unwrap();
         assert_eq!(old.ui.skin, Skin::Studio);
         assert!(old.ui.effects);
         assert_eq!(old.ui.theme, Theme::Light);
@@ -512,11 +476,7 @@ mod tests {
             assert!(!l.ui.effects, "{bad}");
             assert_eq!(l.quality, 77, "le reste du fichier doit survivre à {bad}");
         }
-        for (txt, skin) in [
-            ("studio", Skin::Studio),
-            ("atomic", Skin::Atomic),
-            ("mission", Skin::Mission),
-        ] {
+        for (txt, skin) in [("studio", Skin::Studio), ("atomic", Skin::Atomic), ("mission", Skin::Mission)] {
             std::fs::write(&p, format!(r#"{{"ui":{{"skin":"{txt}"}}}}"#)).unwrap();
             assert_eq!(load(&p).ui.skin, skin);
         }
@@ -526,8 +486,7 @@ mod tests {
     #[test]
     fn accent_et_son_par_defaut_aller_retour_et_valeur_inconnue() {
         // Fichier d'avant le choix d'accent : or, son actif.
-        let old: Settings =
-            serde_json::from_str(r#"{"quality":88,"ui":{"skin":"atomic"}}"#).unwrap();
+        let old: Settings = serde_json::from_str(r#"{"quality":88,"ui":{"skin":"atomic"}}"#).unwrap();
         assert_eq!(old.ui.accent, Accent::Gold);
         assert!(!old.ui.muted);
         assert_eq!(old.ui.skin, Skin::Atomic);
@@ -542,11 +501,7 @@ mod tests {
         assert_eq!(load(&p), s);
 
         for bad in [r#""magenta""#, "3", "null", r#""Gold""#] {
-            std::fs::write(
-                &p,
-                format!(r#"{{"quality":77,"ui":{{"accent":{bad},"muted":true}}}}"#),
-            )
-            .unwrap();
+            std::fs::write(&p, format!(r#"{{"quality":77,"ui":{{"accent":{bad},"muted":true}}}}"#)).unwrap();
             let l = load(&p);
             assert_eq!(l.ui.accent, Accent::Gold, "{bad}");
             assert!(l.ui.muted, "{bad}");
@@ -577,16 +532,9 @@ mod tests {
     fn charge_un_fichier_du_sprint_1() {
         let p = tmp("v1.json");
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
-        std::fs::write(
-            &p,
-            r#"{"quality": 88, "chroma": "4:2:0", "outputDir": "D:\\Captures"}"#,
-        )
-        .unwrap();
+        std::fs::write(&p, r#"{"quality": 88, "chroma": "4:2:0", "outputDir": "D:\\Captures"}"#).unwrap();
         let s = load(&p);
-        assert_eq!(
-            (s.quality, s.chroma, s.output_dir.as_deref()),
-            (88, Chroma::C420, Some(r"D:\Captures"))
-        );
+        assert_eq!((s.quality, s.chroma, s.output_dir.as_deref()), (88, Chroma::C420, Some(r"D:\Captures")));
         assert_eq!(s.shots, ShotSettings::default());
         assert_eq!(s.overlay.name, "Cinema");
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
@@ -631,42 +579,14 @@ mod tests {
         assert_eq!(a4, (1754, 1240));
         // Résolution : écran ou impression, rien d'autre.
         for (asked, kept) in [(72, 150), (200, 150), (224, 150), (225, 300), (600, 300)] {
-            let s = Settings {
-                sheet: SheetSettings {
-                    dpi: asked,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }
-            .sanitized();
+            let s = Settings { sheet: SheetSettings { dpi: asked, ..Default::default() }, ..Default::default() }.sanitized();
             assert_eq!(s.sheet.dpi, kept, "{asked} dpi");
         }
         // PDF : jamais une image géante, toujours des pages.
-        let pdf = Settings {
-            sheet: SheetSettings {
-                page: SheetPage::Image,
-                format: SheetFormat::Pdf,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let pdf = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Pdf, ..Default::default() }, ..Default::default() };
         assert_eq!(pdf.sanitized().sheet.page, SheetPage::A4);
-        let jpeg = Settings {
-            sheet: SheetSettings {
-                page: SheetPage::Image,
-                format: SheetFormat::Jpeg,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
+        let jpeg = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Jpeg, ..Default::default() }, ..Default::default() };
         assert_eq!(jpeg.sanitized().sheet.page, SheetPage::Image);
-        assert_eq!(
-            SheetSettings {
-                page: SheetPage::Image,
-                ..Default::default()
-            }
-            .page_pixels(),
-            None
-        );
+        assert_eq!(SheetSettings { page: SheetPage::Image, ..Default::default() }.page_pixels(), None);
     }
 }

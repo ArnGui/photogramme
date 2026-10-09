@@ -36,11 +36,7 @@ fn pdf_string(s: &str) -> String {
 
 /// PDF d'une suite de pages-images. `page_mm` : taille de page en
 /// millimètres ; `None` = page à la taille de l'image à 72 dpi.
-pub fn pdf(
-    pages: &[JpegPage],
-    page_mm: Option<(f64, f64)>,
-    title: &str,
-) -> Result<Vec<u8>, String> {
+pub fn pdf(pages: &[JpegPage], page_mm: Option<(f64, f64)>, title: &str) -> Result<Vec<u8>, String> {
     if pages.is_empty() {
         return Err("No page to write.".into());
     }
@@ -63,24 +59,13 @@ pub fn pdf(
         out.extend(b"endobj\n");
     };
 
-    let kids: String = (0..n)
-        .map(|i| format!("{} 0 R", 4 + 3 * i))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let kids: String = (0..n).map(|i| format!("{} 0 R", 4 + 3 * i)).collect::<Vec<_>>().join(" ");
     obj(&mut out, 1, "<< /Type /Catalog /Pages 2 0 R >>", None);
-    obj(
-        &mut out,
-        2,
-        &format!("<< /Type /Pages /Kids [{kids}] /Count {n} >>"),
-        None,
-    );
+    obj(&mut out, 2, &format!("<< /Type /Pages /Kids [{kids}] /Count {n} >>"), None);
     obj(
         &mut out,
         3,
-        &format!(
-            "<< /Title {} /Producer (Photogramme) /Creator (Photogramme) >>",
-            pdf_string(title)
-        ),
+        &format!("<< /Title {} /Producer (Photogramme) /Creator (Photogramme) >>", pdf_string(title)),
         None,
     );
     for (i, p) in pages.iter().enumerate() {
@@ -103,12 +88,7 @@ pub fn pdf(
             ),
             None,
         );
-        obj(
-            &mut out,
-            content_id,
-            &format!("<< /Length {} >>", content.len()),
-            Some(content.as_bytes()),
-        );
+        obj(&mut out, content_id, &format!("<< /Length {} >>", content.len()), Some(content.as_bytes()));
         obj(
             &mut out,
             image_id,
@@ -129,13 +109,7 @@ pub fn pdf(
         let _ = writeln!(table, "{off:010} 00000 n ");
     }
     out.extend(table.as_bytes());
-    out.extend(
-        format!(
-            "trailer\n<< /Size {} /Root 1 0 R /Info 3 0 R >>\nstartxref\n{xref}\n%%EOF\n",
-            total + 1
-        )
-        .as_bytes(),
-    );
+    out.extend(format!("trailer\n<< /Size {} /Root 1 0 R /Info 3 0 R >>\nstartxref\n{xref}\n%%EOF\n", total + 1).as_bytes());
     Ok(out)
 }
 
@@ -145,19 +119,7 @@ mod tests {
     use crate::jpeg::{encode_rgb, Chroma};
 
     fn page(w: u32, h: u32) -> JpegPage {
-        JpegPage {
-            jpeg: encode_rgb(
-                &vec![90u8; (w * h * 3) as usize],
-                w,
-                h,
-                85,
-                Chroma::C420,
-                false,
-            )
-            .unwrap(),
-            width: w,
-            height: h,
-        }
+        JpegPage { jpeg: encode_rgb(&vec![90u8; (w * h * 3) as usize], w, h, 85, Chroma::C420, false).unwrap(), width: w, height: h }
     }
 
     #[test]
@@ -167,42 +129,23 @@ mod tests {
         let text = String::from_utf8_lossy(&doc);
         assert!(text.starts_with("%PDF-1.4"));
         assert!(text.contains("/Count 2"));
-        assert!(
-            text.contains("/MediaBox [0 0 841.890 595.276]"),
-            "A4 paysage en points"
-        );
+        assert!(text.contains("/MediaBox [0 0 841.890 595.276]"), "A4 paysage en points");
         assert!(text.contains("/Title (Le film \\(v2\\))"));
         assert!(text.trim_end().ends_with("%%EOF"));
         // Chaque entrée de la table xref pointe sur « N 0 obj ».
-        let xref_at: usize = text
-            .rsplit("startxref\n")
-            .next()
-            .unwrap()
-            .lines()
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap();
+        let xref_at: usize = text.rsplit("startxref\n").next().unwrap().lines().next().unwrap().parse().unwrap();
         let table = &doc[xref_at..];
         let table = String::from_utf8_lossy(table);
         for (id, line) in table.lines().skip(3).take(9).enumerate() {
             let off: usize = line[..10].parse().unwrap();
-            assert!(
-                doc[off..].starts_with(format!("{} 0 obj", id + 1).as_bytes()),
-                "objet {}",
-                id + 1
-            );
+            assert!(doc[off..].starts_with(format!("{} 0 obj", id + 1).as_bytes()), "objet {}", id + 1);
         }
     }
 
     #[test]
     fn refuse_une_page_invalide() {
         assert!(pdf(&[], None, "x").is_err());
-        let bad = JpegPage {
-            jpeg: vec![1, 2, 3, 4],
-            width: 2,
-            height: 2,
-        };
+        let bad = JpegPage { jpeg: vec![1, 2, 3, 4], width: 2, height: 2 };
         assert!(pdf(&[bad], None, "x").is_err());
     }
 }

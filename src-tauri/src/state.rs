@@ -3,8 +3,8 @@
 use crate::jobs::{JobEvent, RawFrame, Written};
 use crate::runner::ProcessGroup;
 use photogramme_core::analysis::Analysis;
-use photogramme_core::batch::InOrder;
 use photogramme_core::cuts::ImportedCuts;
+use photogramme_core::batch::InOrder;
 use photogramme_core::sheet::JpegPage;
 use photogramme_core::{Settings, VideoInfo};
 use std::collections::HashMap;
@@ -87,13 +87,7 @@ pub fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>, String> {
 }
 
 impl AppState {
-    pub fn new(
-        settings: Settings,
-        settings_path: PathBuf,
-        presets_dir: PathBuf,
-        projects_dir: PathBuf,
-        updates_enabled: bool,
-    ) -> Self {
+    pub fn new(settings: Settings, settings_path: PathBuf, presets_dir: PathBuf, projects_dir: PathBuf, updates_enabled: bool) -> Self {
         Self {
             video: Mutex::new(None),
             settings: Mutex::new(settings),
@@ -114,10 +108,7 @@ impl AppState {
     /// Film ouvert, avec le timecode choisi dans les réglages.
     pub fn video(&self) -> Result<VideoInfo, String> {
         let mode = lock(&self.settings)?.export.timecode;
-        lock(&self.video)?
-            .clone()
-            .map(|v| v.with_tc_mode(mode))
-            .ok_or_else(|| "No film open.".into())
+        lock(&self.video)?.clone().map(|v| v.with_tc_mode(mode)).ok_or_else(|| "No film open.".into())
     }
 
     pub fn settings(&self) -> Result<Settings, String> {
@@ -125,17 +116,12 @@ impl AppState {
     }
 
     pub fn analysis(&self) -> Result<Arc<StoredAnalysis>, String> {
-        lock(&self.analysis)?
-            .clone()
-            .ok_or_else(|| "Analyze the film first.".into())
+        lock(&self.analysis)?.clone().ok_or_else(|| "Analyze the film first.".into())
     }
 
     /// Analyse du film ouvert, s'il y en a une.
     pub fn analysis_for(&self, path: &str) -> Option<Arc<StoredAnalysis>> {
-        lock(&self.analysis)
-            .ok()?
-            .clone()
-            .filter(|a| a.path == path)
+        lock(&self.analysis).ok()?.clone().filter(|a| a.path == path)
     }
 
     pub fn cuts(&self) -> Option<Arc<ImportedCuts>> {

@@ -56,20 +56,12 @@ impl RawOutput {
 
 /// Message d'échec lisible à partir de stderr, du code de sortie et d'une
 /// éventuelle erreur de lecture.
-pub fn failure_message(
-    name: &str,
-    stderr: &str,
-    code: Option<i32>,
-    error: Option<String>,
-) -> String {
+pub fn failure_message(name: &str, stderr: &str, code: Option<i32>, error: Option<String>) -> String {
     let err = stderr.trim();
     if !err.is_empty() {
         // Les dernières lignes suffisent : FFmpeg finit par la cause.
         let tail: Vec<&str> = err.lines().rev().take(6).collect();
-        format!(
-            "{name}: {}",
-            tail.into_iter().rev().collect::<Vec<_>>().join("\n")
-        )
+        format!("{name}: {}", tail.into_iter().rev().collect::<Vec<_>>().join("\n"))
     } else if let Some(e) = error {
         format!("{name}: {e}")
     } else {
@@ -91,12 +83,7 @@ pub async fn run_raw(cmd: Command, name: &str) -> Result<Vec<u8>, String> {
         out.push(event);
     }
     if out.code != Some(0) {
-        return Err(failure_message(
-            name,
-            &String::from_utf8_lossy(&out.stderr),
-            out.code,
-            out.error,
-        ));
+        return Err(failure_message(name, &String::from_utf8_lossy(&out.stderr), out.code, out.error));
     }
     Ok(out.stdout)
 }
@@ -197,11 +184,7 @@ impl ProcessGroup {
 pub enum FrameMsg {
     Frame(Vec<u8>),
     /// Fin du processus : code de sortie, stderr, octets d'une image incomplète.
-    Done {
-        code: Option<i32>,
-        stderr: String,
-        leftover: usize,
-    },
+    Done { code: Option<i32>, stderr: String, leftover: usize },
 }
 
 /// Lance une commande et lit sa sortie IMAGE PAR IMAGE, directement dans
@@ -215,21 +198,14 @@ pub enum FrameMsg {
 /// tubes, CREATE_NO_WINDOW sous Windows) ; seule la lecture change, via la
 /// conversion publique `From<Command> for std::process::Command`.
 /// Canal de capacité 2 : contre-pression comme avec le plugin.
-pub fn spawn_frames(
-    group: &ProcessGroup,
-    cmd: Command,
-    name: &str,
-    frame_len: usize,
-) -> Result<(Receiver<FrameMsg>, u32), String> {
+pub fn spawn_frames(group: &ProcessGroup, cmd: Command, name: &str, frame_len: usize) -> Result<(Receiver<FrameMsg>, u32), String> {
     if group.is_cancelled() {
         return Err(CANCELLED.into());
     }
     let mut std_cmd: StdCommand = cmd.into();
     // Pas d'entrée standard : FFmpeg est lancé avec -nostdin.
     std_cmd.stdin(std::process::Stdio::null());
-    let child = Arc::new(
-        SharedChild::spawn(&mut std_cmd).map_err(|e| format!("Cannot start {name}: {e}"))?,
-    );
+    let child = Arc::new(SharedChild::spawn(&mut std_cmd).map_err(|e| format!("Cannot start {name}: {e}"))?);
     let pid = child.id();
     let mut stdout = child.take_stdout().ok_or("stdout unavailable")?;
     let mut stderr = child.take_stderr().ok_or("stderr unavailable")?;
@@ -283,11 +259,7 @@ pub fn spawn_frames(
         drop(stdout);
         let code = child.wait().ok().and_then(|s| s.code());
         let stderr = err_thread.join().unwrap_or_default();
-        let _ = tx.blocking_send(FrameMsg::Done {
-            code,
-            stderr,
-            leftover,
-        });
+        let _ = tx.blocking_send(FrameMsg::Done { code, stderr, leftover });
     });
     Ok((rx, pid))
 }

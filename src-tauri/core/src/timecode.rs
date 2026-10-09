@@ -36,11 +36,7 @@ pub struct Timecode {
 
 impl Timecode {
     pub fn zero(fps: f64) -> Self {
-        Self {
-            rate: nominal_rate(fps),
-            drop: false,
-            start: 0,
-        }
+        Self { rate: nominal_rate(fps), drop: false, start: 0 }
     }
 
     /// À partir d'un timecode lu dans le fichier ; `None` ou illisible → 00:00:00:00.
@@ -85,11 +81,7 @@ impl Timecode {
 
 /// Numéros sautés chaque minute en drop-frame : 2 en 29,97, 4 en 59,94.
 fn drop_count(rate: u32) -> u32 {
-    if rate >= 60 {
-        4
-    } else {
-        2
-    }
+    if rate >= 60 { 4 } else { 2 }
 }
 
 /// Nombre d'images comptées → libellé.
@@ -176,32 +168,17 @@ mod tests {
         assert_eq!(tc.label(26), "01:00:01:01");
         assert_eq!(tc.frame_of("01:00:01:01"), Some(26));
         assert_eq!(tc.frame_of("00:59:59:24"), None, "avant le début du film");
-        assert_eq!(
-            Timecode::from_tag(Some("n'importe quoi"), 25.0),
-            Timecode::zero(25.0)
-        );
+        assert_eq!(Timecode::from_tag(Some("n'importe quoi"), 25.0), Timecode::zero(25.0));
         assert_eq!(Timecode::from_tag(None, 25.0).label(25), "00:00:01:00");
     }
 
     #[test]
     fn drop_frame_2997_saute_les_bons_numeros() {
-        let tc = Timecode {
-            rate: 30,
-            drop: true,
-            start: 0,
-        };
+        let tc = Timecode { rate: 30, drop: true, start: 0 };
         assert_eq!(tc.label(1799), "00:00:59;29");
-        assert_eq!(
-            tc.label(1800),
-            "00:01:00;02",
-            "00 et 01 sautés à la minute 1"
-        );
+        assert_eq!(tc.label(1800), "00:01:00;02", "00 et 01 sautés à la minute 1");
         assert_eq!(tc.label(17_981), "00:09:59;29");
-        assert_eq!(
-            tc.label(17_982),
-            "00:10:00;00",
-            "pas de saut à la minute 10"
-        );
+        assert_eq!(tc.label(17_982), "00:10:00;00", "pas de saut à la minute 10");
         // Une heure de 29,97 = 107 892 images : le timecode reste calé sur l'horloge.
         assert_eq!(tc.label(107_892), "01:00:00;00");
     }
@@ -238,14 +215,7 @@ mod tests {
 
     #[test]
     fn refuse_les_libelles_invalides() {
-        for bad in [
-            "",
-            "1:2:3",
-            "00:60:00:00",
-            "00:00:00:25",
-            "aa:00:00:00",
-            "00:00:00:00:00",
-        ] {
+        for bad in ["", "1:2:3", "00:60:00:00", "00:00:00:25", "aa:00:00:00", "00:00:00:00:00"] {
             assert_eq!(parse_label(bad, 25, false), None, "{bad}");
         }
     }

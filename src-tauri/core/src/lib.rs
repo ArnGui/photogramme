@@ -29,10 +29,7 @@ pub mod swatches;
 pub mod timecode;
 
 pub use analysis::{analysis_args, Analysis, Analyzer, Decoder, GPU_DECODER};
-pub use capture::{
-    capture_converted, capture_from_raw, capture_from_raw_shot, capture_from_rgba, export_csv,
-    CaptureResult, CsvRow,
-};
+pub use capture::{capture_converted, capture_from_raw, capture_from_raw_shot, capture_from_rgba, export_csv, CaptureResult, CsvRow};
 pub use color::ColorProfile;
 pub use ffargs::{capture_args, capture_args_fmt, capture_args_sized, seek_seconds};
 pub use jpeg::{encode_image, encode_rgb, Chroma, ImageFormat};

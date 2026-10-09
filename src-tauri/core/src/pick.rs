@@ -14,9 +14,7 @@ pub enum Pick {
     Middle,
     Last,
     /// N images réparties dans le plan.
-    Spread {
-        count: u32,
-    },
+    Spread { count: u32 },
 }
 
 /// Plan envoyé par l'interface (après fusions et décochages).
@@ -63,9 +61,7 @@ fn spread(start: u64, end: u64, n: u64) -> Vec<u64> {
         return Vec::new();
     }
     let n = n.min(len);
-    let mut v: Vec<u64> = (0..n)
-        .map(|i| start + ((2 * i + 1) * len) / (2 * n))
-        .collect();
+    let mut v: Vec<u64> = (0..n).map(|i| start + ((2 * i + 1) * len) / (2 * n)).collect();
     v.dedup();
     v
 }
@@ -106,9 +102,7 @@ pub fn plan_items(
     }
     // [lo, hi) : toute la plage utile.
     let (lo, hi) = match range {
-        Some(r) if r.start <= r.end && r.start < frame_count => {
-            (r.start, (r.end + 1).min(frame_count))
-        }
+        Some(r) if r.start <= r.end && r.start < frame_count => (r.start, (r.end + 1).min(frame_count)),
         Some(_) => return Err("The in and out points are outside the film.".into()),
         None => (0, frame_count),
     };
@@ -124,10 +118,7 @@ pub fn plan_items(
                     let (a, b) = (s.start.max(lo), s.end.min(hi));
                     pick_in_span(a, b.max(a), *pick)
                         .into_iter()
-                        .map(move |frame| BatchItem {
-                            frame,
-                            shot: Some(s.index),
-                        })
+                        .map(move |frame| BatchItem { frame, shot: Some(s.index) })
                 })
                 .collect()
         }
@@ -182,15 +173,8 @@ mod tests {
         assert_eq!(pick_in_span(10, 20, Pick::Middle), vec![14]);
         assert_eq!(pick_in_span(10, 21, Pick::Middle), vec![15]);
         assert_eq!(pick_in_span(10, 20, Pick::Last), vec![19]);
-        assert_eq!(
-            pick_in_span(0, 12, Pick::Spread { count: 3 }),
-            vec![2, 6, 10]
-        );
-        assert_eq!(
-            pick_in_span(0, 2, Pick::Spread { count: 5 }),
-            vec![0, 1],
-            "pas plus que d'images"
-        );
+        assert_eq!(pick_in_span(0, 12, Pick::Spread { count: 3 }), vec![2, 6, 10]);
+        assert_eq!(pick_in_span(0, 2, Pick::Spread { count: 5 }), vec![0, 1], "pas plus que d'images");
         assert!(pick_in_span(5, 5, Pick::First).is_empty());
     }
 
@@ -198,73 +182,33 @@ mod tests {
     fn par_plans_trie_et_borne() {
         let req = BatchRequest::Shots {
             shots: vec![
-                ShotSpan {
-                    index: 3,
-                    start: 72,
-                    end: 200,
-                },
-                ShotSpan {
-                    index: 1,
-                    start: 0,
-                    end: 48,
-                },
+                ShotSpan { index: 3, start: 72, end: 200 },
+                ShotSpan { index: 1, start: 0, end: 48 },
             ],
             pick: Pick::Last,
         };
         let items = plan_items(&req, None, 120, 24, 1).unwrap();
         assert_eq!(
             items,
-            vec![
-                BatchItem {
-                    frame: 47,
-                    shot: Some(1)
-                },
-                BatchItem {
-                    frame: 119,
-                    shot: Some(3)
-                }
-            ]
+            vec![BatchItem { frame: 47, shot: Some(1) }, BatchItem { frame: 119, shot: Some(3) }]
         );
     }
 
     #[test]
     fn par_intervalle() {
         let items = plan_items(&BatchRequest::Interval { seconds: 2.0 }, None, 120, 24, 1).unwrap();
-        assert_eq!(
-            items.iter().map(|i| i.frame).collect::<Vec<_>>(),
-            vec![0, 48, 96]
-        );
+        assert_eq!(items.iter().map(|i| i.frame).collect::<Vec<_>>(), vec![0, 48, 96]);
         // 23,976 i/s : 1 s = 23,976 images, arrondi à l'image la plus proche.
-        let items = plan_items(
-            &BatchRequest::Interval { seconds: 1.0 },
-            None,
-            100,
-            24000,
-            1001,
-        )
-        .unwrap();
-        assert_eq!(
-            items.iter().map(|i| i.frame).take(4).collect::<Vec<_>>(),
-            vec![0, 24, 48, 72]
-        );
+        let items = plan_items(&BatchRequest::Interval { seconds: 1.0 }, None, 100, 24000, 1001).unwrap();
+        assert_eq!(items.iter().map(|i| i.frame).take(4).collect::<Vec<_>>(), vec![0, 24, 48, 72]);
         assert!(plan_items(&BatchRequest::Interval { seconds: 0.0 }, None, 100, 24, 1).is_err());
-        assert!(plan_items(
-            &BatchRequest::Interval { seconds: 0.001 },
-            None,
-            10_000_000,
-            24,
-            1
-        )
-        .is_err());
+        assert!(plan_items(&BatchRequest::Interval { seconds: 0.001 }, None, 10_000_000, 24, 1).is_err());
     }
 
     #[test]
     fn reparties_sur_le_film() {
         let items = plan_items(&BatchRequest::Spread { count: 4 }, None, 100, 24, 1).unwrap();
-        assert_eq!(
-            items.iter().map(|i| i.frame).collect::<Vec<_>>(),
-            vec![12, 37, 62, 87]
-        );
+        assert_eq!(items.iter().map(|i| i.frame).collect::<Vec<_>>(), vec![12, 37, 62, 87]);
         assert!(plan_items(&BatchRequest::Spread { count: 0 }, None, 100, 24, 1).is_err());
     }
 
@@ -272,60 +216,20 @@ mod tests {
     fn limite_aux_points_d_entree_et_de_sortie() {
         let r = Some(FrameRange { start: 30, end: 89 });
         let items = plan_items(&BatchRequest::Interval { seconds: 1.0 }, r, 200, 24, 1).unwrap();
-        assert_eq!(
-            items.iter().map(|i| i.frame).collect::<Vec<_>>(),
-            vec![30, 54, 78]
-        );
+        assert_eq!(items.iter().map(|i| i.frame).collect::<Vec<_>>(), vec![30, 54, 78]);
         let items = plan_items(&BatchRequest::Spread { count: 3 }, r, 200, 24, 1).unwrap();
-        assert_eq!(
-            items.iter().map(|i| i.frame).collect::<Vec<_>>(),
-            vec![40, 60, 80]
-        );
+        assert_eq!(items.iter().map(|i| i.frame).collect::<Vec<_>>(), vec![40, 60, 80]);
         let req = BatchRequest::Shots {
             shots: vec![
-                ShotSpan {
-                    index: 1,
-                    start: 0,
-                    end: 40,
-                },
-                ShotSpan {
-                    index: 2,
-                    start: 40,
-                    end: 100,
-                },
-                ShotSpan {
-                    index: 3,
-                    start: 100,
-                    end: 200,
-                },
+                ShotSpan { index: 1, start: 0, end: 40 },
+                ShotSpan { index: 2, start: 40, end: 100 },
+                ShotSpan { index: 3, start: 100, end: 200 },
             ],
             pick: Pick::First,
         };
         let items = plan_items(&req, r, 200, 24, 1).unwrap();
-        assert_eq!(
-            items,
-            vec![
-                BatchItem {
-                    frame: 30,
-                    shot: Some(1)
-                },
-                BatchItem {
-                    frame: 40,
-                    shot: Some(2)
-                }
-            ]
-        );
-        assert!(plan_items(
-            &req,
-            Some(FrameRange {
-                start: 500,
-                end: 600
-            }),
-            200,
-            24,
-            1
-        )
-        .is_err());
+        assert_eq!(items, vec![BatchItem { frame: 30, shot: Some(1) }, BatchItem { frame: 40, shot: Some(2) }]);
+        assert!(plan_items(&req, Some(FrameRange { start: 500, end: 600 }), 200, 24, 1).is_err());
     }
 
     #[test]
@@ -337,9 +241,6 @@ mod tests {
         assert_eq!(r.slug(), "shots");
         let r: BatchRequest = serde_json::from_str(r#"{"kind":"interval","seconds":5}"#).unwrap();
         assert_eq!(r, BatchRequest::Interval { seconds: 5.0 });
-        assert_eq!(
-            serde_json::to_string(&Pick::Middle).unwrap(),
-            r#"{"mode":"middle"}"#
-        );
+        assert_eq!(serde_json::to_string(&Pick::Middle).unwrap(), r#"{"mode":"middle"}"#);
     }
 }
