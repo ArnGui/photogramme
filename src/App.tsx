@@ -11,7 +11,7 @@ import type { SheetCell, SheetLayout } from "./sheet";
 import { checkSync } from "./sync";
 import { hasCommandKey, IS_MAC, shortcut } from "./platform";
 import { shortcutBlocked } from "./keys";
-import { formatFps } from "./timecode";
+import { formatFps, tcOf } from "./timecode";
 import {
   BarcodeStrip, EmptyState, GalleryPanel, rangeOf, ScopesPanel, StatusBar, Timeline, TimelinePanel, Toast, TopBar, Transport,
   UpdateBanner, Viewer, Warnings,
@@ -613,6 +613,42 @@ export default function App() {
     };
   }, [preview, still, effectivePreset, info]);
 
+  /*
+   * Aperçu instantané : dès que la visionneuse montre la nouvelle image, l'aperçu est
+   * redessiné depuis elle (cadre, textes, palette précédente), puis remplacé par l'image
+   * exacte de FFmpeg (couleurs converties, palette) quand elle arrive. L'aperçu reste
+   * entier et suit la navigation sans attendre le décodage (plusieurs secondes en 4K).
+   */
+  const target = player.frame;
+  useEffect(() => {
+    const v = player.videoRef.current;
+    if (!preview || player.playing || !cors || !info || !v || !still || still.frame === target) return;
+    let alive = true;
+    let raf = 0;
+    const draw = () => {
+      if (!alive) return;
+      // Image pas encore décodée : on réessaie à l'affichage suivant.
+      if (v.seeking || v.readyState < 2) {
+        raf = requestAnimationFrame(draw);
+        return;
+      }
+      const c = new OffscreenCanvas(info.outWidth, info.outHeight);
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(v, 0, 0, info.outWidth, info.outHeight);
+      const rgba = ctx.getImageData(0, 0, info.outWidth, info.outHeight).data;
+      // L'image exacte, si elle est déjà là, n'est jamais remplacée par l'approximation.
+      setStill((s) => (s && (s.frame !== target || s.provisional)
+        ? { ...s, frame: target, timecode: tcOf(info, target), width: info.outWidth, height: info.outHeight, rgba, provisional: true }
+        : s));
+    };
+    draw();
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [preview, player.playing, player.videoRef, cors, info, still, target]);
+
   /* ───── Synchro visionneuse ↔ FFmpeg (une fois par film) ───── */
 
   useEffect(() => {
@@ -1072,7 +1108,7 @@ export default function App() {
                       setCors(false);
                       setSync({ status: "unavailable", tries: 4 });
                     }}>
-                    <canvas ref={canvasRef} className="preview-canvas"
+                    <canvas ref={canvasRef} className="preview-canvas" data-frame={still?.frame} data-exact={still && !still.provisional ? "" : undefined}
                       style={{ display: preview && previewSize && !player.playing ? "block" : "none" }} />
                     {preview && settings && !settings.export.overlay && !player.playing && (
                       <div className="preview-note">LOOK OFF IN EXPORTS · turn on “Apply the look to exported stills” (LOOK)</div>

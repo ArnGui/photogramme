@@ -211,9 +211,7 @@ export function Viewer({ info, videoRef, preview, previewSize, previewState, onT
 }) {
   const stage = useRef<HTMLDivElement>(null);
   const refCanvas = useRef<HTMLCanvasElement>(null);
-  // Aperçu montré seulement quand il est à jour : pendant son calcul, la vidéo (qui est
-  // déjà sur la bonne image) reste visible, au lieu de l'aperçu d'une image précédente.
-  const showCanvas = preview && previewSize !== null && previewState === "ready";
+  const showCanvas = preview && previewSize !== null && previewState !== "playing";
   const nativeW = showCanvas ? previewSize.w : info.outWidth;
   const nativeH = showCanvas ? previewSize.h : info.outHeight;
   const fit = useFitBox(stage, nativeW / nativeH);

@@ -296,6 +296,8 @@ export interface FrameData {
   job: number | null;
   total: number | null;
   rgba: Uint8ClampedArray;
+  /** Dessinée depuis la visionneuse en attendant l'image exacte de FFmpeg. */
+  provisional?: boolean;
 }
 
 export type FilmEvent = { kind: "opened"; info: VideoInfo } | { kind: "failed"; message: string };

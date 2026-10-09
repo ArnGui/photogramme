@@ -268,21 +268,23 @@ test("M and the speaker button mute the viewer, and the choice is saved", async 
   expect(errors).toEqual([]);
 });
 
-// Régression v0.7 : à la pause, l'aperçu d'export de l'image d'avant la lecture restait
-// affiché le temps du décodage FFmpeg (plusieurs secondes sur un GOP long).
-test("with the export preview on, pausing never shows a stale preview", async ({ page }) => {
+// Régression v0.7 : avec l'aperçu d'export, changer d'image laissait l'ancien aperçu
+// plusieurs secondes (décodage FFmpeg d'une image 4K), avec la vidéo visible autour.
+test("with the export preview on, moving shows the new frame at once, then the exact one", async ({ page }) => {
   const errors = await boot(page, { analysis: true });
   await page.keyboard.press("p");
-  await expect(page.locator(".preview-canvas")).toBeVisible();
-  await page.evaluate(() => ((window as unknown as { __grabDelay: number }).__grabDelay = 1500));
-  await page.keyboard.press(" ");
-  await expect.poll(() => tcText(page)).not.toBe("01:00:00:00");
-  await page.keyboard.press(" ");
-  // Pendant le calcul : la vidéo, déjà sur la bonne image, reste visible.
-  await expect(page.locator(".preview-badge.is-loading")).toBeVisible();
-  await expect(page.locator("video")).toBeVisible();
-  // Puis l'aperçu à jour la remplace.
-  await expect(page.locator(".preview-badge.is-loading")).toHaveCount(0, { timeout: 5000 });
-  await expect(page.locator("video")).toBeHidden();
+  const canvas = page.locator(".preview-canvas");
+  await expect(canvas).toHaveAttribute("data-exact", "");
+  // FFmpeg simulé à 5 s : tout aperçu montré avant vient de la visionneuse.
+  await page.evaluate(() => ((window as unknown as { __grabDelay: number }).__grabDelay = 5000));
+  for (const move of ["End", "Home", "Shift+ArrowRight"]) {
+    await page.keyboard.press(move);
+    const frame = String(Number(/FRAME (\d+)/.exec((await page.locator(".tc-sub").textContent())!)![1]) - 1);
+    await expect(canvas).toHaveAttribute("data-frame", frame, { timeout: 3000 });
+    await expect(canvas).not.toHaveAttribute("data-exact", "");
+    await expect(page.locator("video")).toBeHidden();
+  }
+  // Puis l'image exacte de FFmpeg la remplace.
+  await expect(canvas).toHaveAttribute("data-exact", "", { timeout: 8000 });
   expect(errors).toEqual([]);
 });
