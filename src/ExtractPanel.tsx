@@ -189,7 +189,7 @@ export function ExtractPanel(props: {
           {/* Réglages repliables : la liste des plans passe devant. Toujours ouverts tant qu'il n'y a pas de liste. */}
           <details className="section extract-settings" open={settingsOpen || !haveList}
             onToggle={(e) => haveList && saveSettingsOpen(e.currentTarget.open)}>
-            <summary>
+            <summary title={settingsOpen || !haveList ? "Hide the settings" : "Show the settings"}>
               <span className="section-title">SETTINGS</span>
               <span className="section-summary mono">{settingsSummary}</span>
             </summary>

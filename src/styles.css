@@ -591,8 +591,13 @@ textarea.text { resize: vertical; font-family: var(--f-mono); }
   cursor: pointer; list-style: none; min-height: 40px; display: flex; align-items: center; gap: 10px; padding: 0 2px;
 }
 .section > summary::-webkit-details-marker { display: none; }
-.section > summary::before { content: "›"; color: var(--text-3); transition: transform 0.15s; width: 10px; }
-.section[open] > summary::before { transform: rotate(90deg); }
+.section > summary::before {
+  content: ""; flex: none; width: 7px; height: 7px; margin: 0 4px 0 2px;
+  border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2);
+  transform: rotate(-45deg); transition: transform 0.15s;
+}
+.section[open] > summary::before { transform: rotate(45deg); margin-top: -4px; }
+.section > summary:hover .section-title, .section > summary:hover::before { color: var(--text); border-color: var(--text); }
 .section-title { font-family: var(--f-label); font-weight: var(--label-weight); font-size: var(--label-size); letter-spacing: var(--label-track); color: var(--text-2); }
 .section-summary { margin-left: auto; font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .section-body { padding: 4px 0 14px; display: flex; flex-direction: column; gap: 12px; }
@@ -611,8 +616,16 @@ textarea.text { resize: vertical; font-family: var(--f-mono); }
 .list-tools .btn-link:hover { color: var(--text); }
 .list-tools .push { margin-left: auto; }
 .shots { list-style: none; margin: 0 -6px; padding: 0; display: flex; flex-direction: column; gap: 1px; max-height: max(240px, calc(100vh - 430px)); overflow-y: auto; }
-.extract-settings { border-top: 0; border-bottom: 1px solid var(--line); }
-.extract-settings > summary { padding-top: 2px; }
+.extract-settings { border-top: 0; }
+.extract-settings > summary {
+  min-height: 38px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-control);
+  background: var(--surface); transition: border-color 0.15s;
+}
+.extract-settings > summary:hover { border-color: var(--accent); }
+.extract-settings[open] > summary { border-color: var(--line-3); }
+.extract-settings > summary .section-title { font-size: 12px; color: var(--text); }
+.extract-settings > summary::before { width: 8px; height: 8px; border-color: var(--accent-ink); }
+.extract-settings > .section-body { padding: 12px 2px 4px; }
 .shot {
   display: grid; grid-template-columns: 18px 84px minmax(0, 1fr) 26px; gap: 8px; align-items: center;
   padding: 4px 6px; border-radius: var(--r-small); content-visibility: auto; contain-intrinsic-size: auto 52px;
