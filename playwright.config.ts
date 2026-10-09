@@ -19,7 +19,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npx vite --port 5199 --strictPort",
+    // Adresse imposée : sur les runners Ubuntu de GitHub, « localhost » est ::1 (IPv6)
+    // et Vite n'écouterait que là, alors que les tests visent 127.0.0.1.
+    command: "npx vite --host 127.0.0.1 --port 5199 --strictPort",
     url: "http://127.0.0.1:5199",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
