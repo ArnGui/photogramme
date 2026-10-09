@@ -217,7 +217,11 @@
     reveal: () => {},
     open_folder: () => {},
     save_palette: () => ["D:\\out\\pal.ase", "D:\\out\\pal.css", "D:\\out\\pal.gpl", "D:\\out\\pal.json"],
-    grab_frame: ({ frame }) => framePacket(frame),
+    // window.__grabDelay (ms) : simule un décodage FFmpeg lent (GOP long).
+    grab_frame: async ({ frame }) => {
+      if (window.__grabDelay) await new Promise((r) => setTimeout(r, window.__grabDelay));
+      return framePacket(frame);
+    },
     grab_probe: () => {
       throw "Cannot read back the viewer (test).";
     },

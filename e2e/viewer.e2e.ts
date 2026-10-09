@@ -267,3 +267,22 @@ test("M and the speaker button mute the viewer, and the choice is saved", async 
   expect(await muted()).toBe(false);
   expect(errors).toEqual([]);
 });
+
+// Régression v0.7 : à la pause, l'aperçu d'export de l'image d'avant la lecture restait
+// affiché le temps du décodage FFmpeg (plusieurs secondes sur un GOP long).
+test("with the export preview on, pausing never shows a stale preview", async ({ page }) => {
+  const errors = await boot(page, { analysis: true });
+  await page.keyboard.press("p");
+  await expect(page.locator(".preview-canvas")).toBeVisible();
+  await page.evaluate(() => ((window as unknown as { __grabDelay: number }).__grabDelay = 1500));
+  await page.keyboard.press(" ");
+  await expect.poll(() => tcText(page)).not.toBe("01:00:00:00");
+  await page.keyboard.press(" ");
+  // Pendant le calcul : la vidéo, déjà sur la bonne image, reste visible.
+  await expect(page.locator(".preview-badge.is-loading")).toBeVisible();
+  await expect(page.locator("video")).toBeVisible();
+  // Puis l'aperçu à jour la remplace.
+  await expect(page.locator(".preview-badge.is-loading")).toHaveCount(0, { timeout: 5000 });
+  await expect(page.locator("video")).toBeHidden();
+  expect(errors).toEqual([]);
+});
