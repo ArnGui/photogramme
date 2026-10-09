@@ -19,7 +19,7 @@ Built out of pure laziness. Then it got a bit out of hand.
 > **This page is ADHD-friendly.** The useful part comes first, sections are short, and the long stuff is folded away. Read the first screen and you know whether this tool is for you. Everything below the line is optional.
 
 > [!IMPORTANT]
-> **Version 0.6: hopefully stable, certainly not final.** It is tested on real films and used in my own work, but it is one person's software, so expect fixes and new features. You won't have to watch this page: when an update is out, Photogramme offers it at startup and installs it in one click.
+> **Version 0.7: hopefully stable, certainly not final.** It is tested on real films and used in my own work, but it is one person's software, so expect fixes and new features. You won't have to watch this page: when an update is out, Photogramme offers it at startup and installs it in one click. Version 0.7.0 helps with stability and improves the interface.
 
 ![Photogramme: a film open, its shots detected, scopes on](docs/screenshots/main.png)
 
