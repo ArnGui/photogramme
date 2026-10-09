@@ -140,7 +140,7 @@ impl Default for SheetSettings {
             page: SheetPage::A4,
             landscape: true,
             format: SheetFormat::Pdf,
-            dpi: 200,
+            dpi: 150,
             image_width: 3840,
             theme: SheetTheme::Dark,
             title: "{film}".into(),
@@ -385,7 +385,12 @@ impl Settings {
         self.overlay = self.overlay.sanitized();
         let sh = &mut self.sheet;
         sh.columns = sh.columns.clamp(1, 12);
-        sh.dpi = sh.dpi.clamp(72, 600);
+        // Deux résolutions : écran (150 dpi, PDF qui s'ouvre et se parcourt vite) ou impression (300).
+        sh.dpi = if sh.dpi >= 225 { 300 } else { 150 };
+        // Un PDF est toujours en pages : une page géante est lente et pénible à parcourir.
+        if sh.format == SheetFormat::Pdf && sh.page == SheetPage::Image {
+            sh.page = SheetPage::A4;
+        }
         sh.image_width = sh.image_width.clamp(640, 16_000);
         sh.title = sh.title.chars().filter(|c| !c.is_control()).take(200).collect();
         if let Some(v) = &mut self.updates.skipped {
@@ -563,15 +568,25 @@ mod tests {
         )
         .unwrap();
         let s = s.sanitized();
-        assert_eq!((s.sheet.columns, s.sheet.dpi), (12, 72));
+        assert_eq!((s.sheet.columns, s.sheet.dpi), (12, 150));
         assert_eq!(s.export.format, ImageFormat::Png);
         assert_eq!(s.export.color, ColorProfile::Srgb);
         assert_eq!(s.export.timecode, TimecodeMode::Zero);
         assert_eq!(s.updates.skipped.as_deref(), Some("0.5.0script"));
         assert!(s.updates.check_at_startup);
-        // A4 paysage à 200 dpi.
+        // A4 paysage à 150 dpi (écran, par défaut).
         let a4 = SheetSettings::default().page_pixels().unwrap();
-        assert_eq!(a4, (2339, 1654));
+        assert_eq!(a4, (1754, 1240));
+        // Résolution : écran ou impression, rien d'autre.
+        for (asked, kept) in [(72, 150), (200, 150), (224, 150), (225, 300), (600, 300)] {
+            let s = Settings { sheet: SheetSettings { dpi: asked, ..Default::default() }, ..Default::default() }.sanitized();
+            assert_eq!(s.sheet.dpi, kept, "{asked} dpi");
+        }
+        // PDF : jamais une image géante, toujours des pages.
+        let pdf = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Pdf, ..Default::default() }, ..Default::default() };
+        assert_eq!(pdf.sanitized().sheet.page, SheetPage::A4);
+        let jpeg = Settings { sheet: SheetSettings { page: SheetPage::Image, format: SheetFormat::Jpeg, ..Default::default() }, ..Default::default() };
+        assert_eq!(jpeg.sanitized().sheet.page, SheetPage::Image);
         assert_eq!(SheetSettings { page: SheetPage::Image, ..Default::default() }.page_pixels(), None);
     }
 }

@@ -78,18 +78,20 @@ export function OutputPanel({ settings: s, onChange, onPickDir, onOpenDir, onExp
 
       <Section title="CONTACT SHEET" summary={`${s.sheet.format.toUpperCase()} · ${s.sheet.page === "image" ? "image" : s.sheet.page.toUpperCase()} · ${s.sheet.columns} col · ${s.sheet.theme}`}>
         <p className="hint">Extract › Contact sheet lays out the planned frames (shots, interval or N frames, within the in/out points) on printable pages.</p>
+        {/* Un PDF est toujours en pages ; « One image » passe donc en JPEG, et PDF en A4. */}
         <Choice label="FORMAT" value={s.sheet.format} options={[["pdf", "PDF"], ["jpeg", "JPEG"], ["png", "PNG"]]}
-          onChange={(format) => onChange({ ...s, sheet: { ...s.sheet, format } })} />
+          onChange={(format) => onChange({ ...s, sheet: { ...s.sheet, format, page: format === "pdf" && s.sheet.page === "image" ? "a4" : s.sheet.page } })} />
         <Choice label="PAGE" value={s.sheet.page}
           options={[["a4", "A4"], ["a3", "A3"], ["letter", "Letter"], ["tabloid", "Tabloid"], ["image", "One image"]]}
-          onChange={(page) => onChange({ ...s, sheet: { ...s.sheet, page } })} />
+          onChange={(page) => onChange({ ...s, sheet: { ...s.sheet, page, format: page === "image" && s.sheet.format === "pdf" ? "jpeg" : s.sheet.format } })} />
+        {s.sheet.format === "pdf" && <p className="hint">A PDF is always made of pages: quick to open and to browse. One image gives a JPEG or PNG.</p>}
         {s.sheet.page === "image" ? (
           <NumberField label="Image width" unit="px" value={s.sheet.imageWidth} min={640} max={16000} step={160}
             onChange={(imageWidth) => onChange({ ...s, sheet: { ...s.sheet, imageWidth: Math.round(imageWidth) } })} />
         ) : (
           <>
             <Toggle label="Landscape" checked={s.sheet.landscape} onChange={(landscape) => onChange({ ...s, sheet: { ...s.sheet, landscape } })} />
-            <Choice label="RESOLUTION" value={String(s.sheet.dpi)} options={[["150", "150 dpi"], ["200", "200 dpi"], ["300", "300 dpi"]]}
+            <Choice label="RESOLUTION" value={s.sheet.dpi >= 225 ? "300" : "150"} options={[["150", "Screen · 150 dpi"], ["300", "Print · 300 dpi"]]}
               onChange={(d) => onChange({ ...s, sheet: { ...s.sheet, dpi: Number(d) } })} />
           </>
         )}

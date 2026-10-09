@@ -159,9 +159,14 @@ test.describe("OUTPUT", () => {
     await section.locator("summary").click();
     await section.getByRole("group", { name: "PAGE" }).getByRole("button", { name: "One image" }).click();
     await expect(section.getByRole("textbox", { name: "Image width" })).toBeVisible();
+    // Un PDF est toujours en pages : « One image » passe en JPEG, et revenir au PDF repasse en A4.
+    const format = section.getByRole("group", { name: "FORMAT" });
+    await expect(format.getByRole("button", { name: "JPEG" })).toHaveAttribute("aria-pressed", "true");
+    await format.getByRole("button", { name: "PDF" }).click();
+    await expect(section.getByRole("group", { name: "PAGE" }).getByRole("button", { name: "A4" })).toHaveAttribute("aria-pressed", "true");
     await section.getByRole("group", { name: "PAGE" }).getByRole("button", { name: "A3" }).click();
     await section.locator("label.toggle", { hasText: "Landscape" }).click();
-    await section.getByRole("group", { name: "RESOLUTION" }).getByRole("button", { name: "300 dpi" }).click();
+    await section.getByRole("group", { name: "RESOLUTION" }).getByRole("button", { name: "Print · 300 dpi" }).click();
     const cols = section.getByRole("textbox", { name: "Columns" });
     await cols.fill("6");
     await cols.press("Enter");
