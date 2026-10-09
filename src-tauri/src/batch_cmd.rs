@@ -6,16 +6,20 @@
 //!   (`batch_pull`), compose avec le même code que l'aperçu, et renvoie le
 //!   résultat (`write_composed` pour une image, `sheet_page` pour une page).
 
+use crate::frames::{palette_of, FrameHeader};
 use crate::jobs::{self, run_batch_direct, JobEvent, RawFrame, Throttle};
 use crate::runner::{ProcessGroup, CANCELLED};
 use crate::state::{lock, AppState, BatchJob, JobKind};
-use crate::frames::{palette_of, FrameHeader};
+use photogramme_core::batch::InOrder;
 use photogramme_core::batch::{OutSize, PixelFormat};
 use photogramme_core::color::{convert_in_place, icc_profile};
 use photogramme_core::naming::{film_stem, unique_dir, unique_path};
 use photogramme_core::settings::SheetFormat;
 use photogramme_core::sheet::{self, JpegPage};
-use photogramme_core::{encode_image, export_csv, packet, plan_items, BatchRequest, Chroma, CsvRow, FrameRange, ImageFormat};
+use photogramme_core::{
+    encode_image, export_csv, packet, plan_items, BatchRequest, Chroma, CsvRow, FrameRange,
+    ImageFormat,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -33,10 +37,23 @@ pub struct BatchPlan {
 
 /// Nombre d'images que produirait un export, sans rien lancer.
 #[tauri::command]
-pub fn batch_plan(state: State<'_, AppState>, request: BatchRequest, range: Option<FrameRange>) -> Result<BatchPlan, String> {
+pub fn batch_plan(
+    state: State<'_, AppState>,
+    request: BatchRequest,
+    range: Option<FrameRange>,
+) -> Result<BatchPlan, String> {
     let info = state.video()?;
-    let items = plan_items(&request, range, info.frame_count, info.fps_num, info.fps_den)?;
-    Ok(BatchPlan { count: items.len(), first: items.iter().take(8).map(|i| i.frame).collect() })
+    let items = plan_items(
+        &request,
+        range,
+        info.frame_count,
+        info.fps_num,
+        info.fps_den,
+    )?;
+    Ok(BatchPlan {
+        count: items.len(),
+        first: items.iter().take(8).map(|i| i.frame).collect(),
+    })
 }
 
 /// Ce que produit l'export.
@@ -73,27 +90,53 @@ pub async fn batch_start(
 ) -> Result<BatchStarted, String> {
     let info = state.video()?;
     let settings = state.settings()?;
-    let out = PathBuf::from(settings.output_dir.clone().ok_or("Choose an output folder first.")?);
+    let out = PathBuf::from(
+        settings
+            .output_dir
+            .clone()
+            .ok_or("Choose an output folder first.")?,
+    );
     if !out.is_dir() {
         return Err("The output folder no longer exists.".into());
     }
-    let items = plan_items(&request, range, info.frame_count, info.fps_num, info.fps_den)?;
+    let items = plan_items(
+        &request,
+        range,
+        info.frame_count,
+        info.fps_num,
+        info.fps_den,
+    )?;
     if matches!(target, BatchTarget::Sheet { .. }) && items.len() > 5_000 {
-        return Err(format!("{} frames is too many for a contact sheet (5,000 maximum).", items.len()));
+        return Err(format!(
+            "{} frames is too many for a contact sheet (5,000 maximum).",
+            items.len()
+        ));
     }
     let spans: HashMap<u32, (u64, u64)> = match &request {
-        BatchRequest::Shots { shots, .. } => shots.iter().map(|s| (s.index, (s.start, s.end))).collect(),
+        BatchRequest::Shots { shots, .. } => {
+            shots.iter().map(|s| (s.index, (s.start, s.end))).collect()
+        }
         _ => HashMap::new(),
     };
     let (kind, compose, size) = match target {
         BatchTarget::Stills { compose } => (JobKind::Stills, compose, OutSize::full(&info)),
         BatchTarget::Sheet { cell_width } => {
             let (w, h) = photogramme_core::ffargs::fit_width(&info, cell_width.clamp(32, 1920));
-            (JobKind::Sheet, true, OutSize { width: w, height: h })
+            (
+                JobKind::Sheet,
+                true,
+                OutSize {
+                    width: w,
+                    height: h,
+                },
+            )
         }
     };
     let dir = if kind == JobKind::Stills && settings.export.subfolder {
-        let d = unique_dir(&out, &format!("{}_{}", film_stem(&info.file_name), request.slug()));
+        let d = unique_dir(
+            &out,
+            &format!("{}_{}", film_stem(&info.file_name), request.slug()),
+        );
         std::fs::create_dir_all(&d).map_err(|e| format!("Cannot create the folder: {e}"))?;
         d
     } else {
@@ -128,6 +171,9 @@ pub async fn batch_start(
         height: size.height,
         group: group.clone(),
         frames: tauri::async_runtime::Mutex::new(rx),
+        order: tauri::async_runtime::Mutex::new(
+            (kind == JobKind::Sheet).then(|| InOrder::new(items.iter().map(|i| i.frame).collect())),
+        ),
         producer_error: producer_error.clone(),
         written: Mutex::new(Vec::new()),
         palettes: Mutex::new(HashMap::new()),
@@ -142,7 +188,9 @@ pub async fn batch_start(
     if let Some(tx) = tx {
         let (app2, info2, err) = (app.clone(), info.clone(), producer_error);
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = jobs::produce(app2, group, info2, items, PixelFormat::Rgba, size, tx).await {
+            if let Err(e) =
+                jobs::produce(app2, group, info2, items, PixelFormat::Rgba, size, tx).await
+            {
                 if let Ok(mut x) = err.lock() {
                     *x = Some(e);
                 }
@@ -153,16 +201,30 @@ pub async fn batch_start(
         tauri::async_runtime::spawn(async move {
             let mut th = Throttle::new();
             let mut done = 0u64;
-            let res = run_batch_direct(&app2, &job.group, &job.info, &job.settings, items, job.dir.clone(), |w| {
-                done += 1;
-                if let Ok(mut all) = job.written.lock() {
-                    all.push(w.clone());
-                }
-                let _ = job.events.send(JobEvent::Written { capture: w.capture.clone() });
-                if th.ready() || done == job.total as u64 {
-                    let _ = job.events.send(JobEvent::Progress { phase: "export", done, total: job.total as u64 });
-                }
-            })
+            let res = run_batch_direct(
+                &app2,
+                &job.group,
+                &job.info,
+                &job.settings,
+                items,
+                job.dir.clone(),
+                |w| {
+                    done += 1;
+                    if let Ok(mut all) = job.written.lock() {
+                        all.push(w.clone());
+                    }
+                    let _ = job.events.send(JobEvent::Written {
+                        capture: w.capture.clone(),
+                    });
+                    if th.ready() || done == job.total as u64 {
+                        let _ = job.events.send(JobEvent::Progress {
+                            phase: "export",
+                            done,
+                            total: job.total as u64,
+                        });
+                    }
+                },
+            )
             .await;
             let event = match res {
                 Ok(_) => finish_stills(&job),
@@ -179,7 +241,13 @@ pub async fn batch_start(
             }
         });
     }
-    Ok(BatchStarted { job: id, total, dir: dir.to_string_lossy().to_string(), width: size.width, height: size.height })
+    Ok(BatchStarted {
+        job: id,
+        total,
+        dir: dir.to_string_lossy().to_string(),
+        width: size.width,
+        height: size.height,
+    })
 }
 
 /// CSV éventuel et événement de fin d'un export d'images.
@@ -192,20 +260,36 @@ fn finish_stills(job: &BatchJob) -> JobEvent {
             .map(|w| CsvRow {
                 capture: Some(w.capture.clone()),
                 span: w.capture.shot.and_then(|s| job.spans.get(&s).copied()),
-                clip: job.cuts.as_ref().and_then(|c| c.name_at(w.capture.frame).map(str::to_string)),
+                clip: job
+                    .cuts
+                    .as_ref()
+                    .and_then(|c| c.name_at(w.capture.frame).map(str::to_string)),
                 palette: w.palette.clone(),
             })
             .collect();
-        let path = unique_path(&job.dir, &format!("{}_export.csv", film_stem(&job.info.file_name)));
-        if photogramme_core::capture::write_new_file(&path, export_csv(&job.info, &rows).as_bytes()).is_ok() {
+        let path = unique_path(
+            &job.dir,
+            &format!("{}_export.csv", film_stem(&job.info.file_name)),
+        );
+        if photogramme_core::capture::write_new_file(&path, export_csv(&job.info, &rows).as_bytes())
+            .is_ok()
+        {
             csv = Some(path.to_string_lossy().to_string());
         }
     }
-    JobEvent::Done { written: written.len(), dir: job.dir.to_string_lossy().to_string(), csv, file: None }
+    JobEvent::Done {
+        written: written.len(),
+        dir: job.dir.to_string_lossy().to_string(),
+        csv,
+        file: None,
+    }
 }
 
 pub fn current_job(state: &AppState, id: u64) -> Result<Arc<BatchJob>, String> {
-    lock(&state.batch)?.clone().filter(|j| j.id == id).ok_or_else(|| CANCELLED.to_string())
+    lock(&state.batch)?
+        .clone()
+        .filter(|j| j.id == id)
+        .ok_or_else(|| CANCELLED.to_string())
 }
 
 /// Mode composition : image suivante (paquet RVBA + palette), ou corps vide
@@ -215,9 +299,20 @@ pub async fn batch_pull(state: State<'_, AppState>, job: u64) -> Result<Response
     let j = current_job(&state, job)?;
     let next = {
         let mut guard = j.frames.lock().await;
-        match guard.as_mut() {
-            Some(rx) => rx.recv().await,
-            None => None,
+        let mut order = j.order.lock().await;
+        match (guard.as_mut(), order.as_mut()) {
+            (None, _) => None,
+            (Some(rx), None) => rx.recv().await,
+            // Planche contact : on attend l'image suivante du film, en rangeant celles qui la devancent.
+            (Some(rx), Some(o)) => loop {
+                if let Some(f) = o.take_ready() {
+                    break Some(f);
+                }
+                match rx.recv().await {
+                    Some(f) => o.put(f.item.frame, f),
+                    None => break o.take_rest(),
+                }
+            },
         }
     };
     let Some(f) = next else {
@@ -239,10 +334,17 @@ pub async fn batch_pull(state: State<'_, AppState>, job: u64) -> Result<Response
             JobKind::Sheet => s.sheet.show_palette,
             JobKind::Stills => s.overlay.palette.enabled || s.export.csv_palette,
         };
-        let palette = if want_palette { palette_of(s, &px, w, h, 4) } else { Vec::new() };
+        let palette = if want_palette {
+            palette_of(s, &px, w, h, 4)
+        } else {
+            Vec::new()
+        };
         if j2.kind == JobKind::Stills && s.export.csv_palette {
             if let Ok(mut p) = j2.palettes.lock() {
-                p.insert(f.item.frame, palette.iter().map(|sw| sw.hex.clone()).collect());
+                p.insert(
+                    f.item.frame,
+                    palette.iter().map(|sw| sw.hex.clone()).collect(),
+                );
             }
         }
         let header = FrameHeader {
@@ -252,7 +354,10 @@ pub async fn batch_pull(state: State<'_, AppState>, job: u64) -> Result<Response
             height: h,
             palette,
             shot: f.item.shot,
-            clip: j2.cuts.as_ref().and_then(|c| c.name_at(f.item.frame).map(str::to_string)),
+            clip: j2
+                .cuts
+                .as_ref()
+                .and_then(|c| c.name_at(f.item.frame).map(str::to_string)),
             job: Some(j2.id),
             total: Some(j2.total),
         };
@@ -298,20 +403,53 @@ pub async fn sheet_page(state: State<'_, AppState>, request: Request<'_>) -> Res
             SheetFormat::Pdf => {
                 let mut pages = lock(&j2.pages)?;
                 if pages.len() >= sheet::MAX_PAGES {
-                    return Err(format!("A contact sheet is limited to {} pages.", sheet::MAX_PAGES));
+                    return Err(format!(
+                        "A contact sheet is limited to {} pages.",
+                        sheet::MAX_PAGES
+                    ));
                 }
-                let jpeg = encode_image(rgba, h.width, h.height, true, ImageFormat::Jpeg, 90, Chroma::C420, None)?;
-                pages.push(JpegPage { jpeg, width: h.width, height: h.height });
+                let jpeg = encode_image(
+                    rgba,
+                    h.width,
+                    h.height,
+                    true,
+                    ImageFormat::Jpeg,
+                    90,
+                    Chroma::C420,
+                    None,
+                )?;
+                pages.push(JpegPage {
+                    jpeg,
+                    width: h.width,
+                    height: h.height,
+                });
                 Ok(pages.len())
             }
             SheetFormat::Jpeg | SheetFormat::Png => {
-                let fmt = if s.sheet.format == SheetFormat::Png { ImageFormat::Png } else { ImageFormat::Jpeg };
-                let data = encode_image(rgba, h.width, h.height, true, fmt, 92, Chroma::C444, icc.as_deref())?;
+                let fmt = if s.sheet.format == SheetFormat::Png {
+                    ImageFormat::Png
+                } else {
+                    ImageFormat::Jpeg
+                };
+                let data = encode_image(
+                    rgba,
+                    h.width,
+                    h.height,
+                    true,
+                    fmt,
+                    92,
+                    Chroma::C444,
+                    icc.as_deref(),
+                )?;
                 let mut files = lock(&j2.page_files)?;
                 let n = files.len() + 1;
                 let path = unique_path(
                     &j2.dir,
-                    &format!("{}_contact-sheet_p{n:02}.{}", film_stem(&j2.info.file_name), fmt.extension()),
+                    &format!(
+                        "{}_contact-sheet_p{n:02}.{}",
+                        film_stem(&j2.info.file_name),
+                        fmt.extension()
+                    ),
                 );
                 photogramme_core::capture::write_new_file(&path, &data)?;
                 files.push(path.to_string_lossy().to_string());
@@ -337,12 +475,25 @@ pub async fn batch_finish(state: State<'_, AppState>, job: u64) -> Result<(), St
             let pages = std::mem::take(&mut *lock(&j2.pages)?);
             let title = format!("{} - contact sheet", film_stem(&j2.info.file_name));
             let doc = sheet::pdf(&pages, j2.settings.sheet.page_mm_landscaped(), &title)?;
-            let path = unique_path(&j2.dir, &format!("{}_contact-sheet.pdf", film_stem(&j2.info.file_name)));
+            let path = unique_path(
+                &j2.dir,
+                &format!("{}_contact-sheet.pdf", film_stem(&j2.info.file_name)),
+            );
             photogramme_core::capture::write_new_file(&path, &doc)?;
-            Ok(JobEvent::Done { written: pages.len(), dir, csv: None, file: Some(path.to_string_lossy().to_string()) })
+            Ok(JobEvent::Done {
+                written: pages.len(),
+                dir,
+                csv: None,
+                file: Some(path.to_string_lossy().to_string()),
+            })
         } else {
             let files = lock(&j2.page_files)?.clone();
-            Ok(JobEvent::Done { written: files.len(), dir, csv: None, file: files.first().cloned() })
+            Ok(JobEvent::Done {
+                written: files.len(),
+                dir,
+                csv: None,
+                file: files.first().cloned(),
+            })
         }
     })
     .await

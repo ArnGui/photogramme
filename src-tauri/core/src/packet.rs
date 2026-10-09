@@ -31,7 +31,8 @@ pub fn decode<H: DeserializeOwned>(bytes: &[u8]) -> Result<(H, &[u8]), String> {
     if n > MAX_HEADER || bytes.len() < 4 + n {
         return Err("Invalid packet header.".into());
     }
-    let header = serde_json::from_slice(&bytes[4..4 + n]).map_err(|e| format!("Unreadable header: {e}"))?;
+    let header =
+        serde_json::from_slice(&bytes[4..4 + n]).map_err(|e| format!("Unreadable header: {e}"))?;
     Ok((header, &bytes[4 + n..]))
 }
 
@@ -48,7 +49,10 @@ mod tests {
 
     #[test]
     fn aller_retour() {
-        let h = H { frame: 42, name: "Été".into() };
+        let h = H {
+            frame: 42,
+            name: "Été".into(),
+        };
         let p = encode(&h, &[1, 2, 3]).unwrap();
         let (h2, px): (H, &[u8]) = decode(&p).unwrap();
         assert_eq!(h2, h);
@@ -59,6 +63,9 @@ mod tests {
     fn refuse_les_paquets_abimes() {
         assert!(decode::<H>(&[1, 0]).is_err());
         assert!(decode::<H>(&[255, 255, 255, 255, 0]).is_err());
-        assert!(decode::<H>(&[2, 0, 0, 0, b'{', b'}']).is_err(), "champs manquants");
+        assert!(
+            decode::<H>(&[2, 0, 0, 0, b'{', b'}']).is_err(),
+            "champs manquants"
+        );
     }
 }

@@ -11,8 +11,8 @@ use crate::state::{lock, AppState, StoredAnalysis};
 use photogramme_core::analysis::Analysis;
 use photogramme_core::cuts::ImportedCuts;
 use photogramme_core::project::{
-    self, analyses_size, decode_analysis, encode_analysis, film_key, prune_analyses, write_atomic, Fingerprint,
-    LoadError, StoredCuts, MAX_ANALYSIS_BYTES, MAX_SESSION_BYTES,
+    self, analyses_size, decode_analysis, encode_analysis, film_key, prune_analyses, write_atomic,
+    Fingerprint, LoadError, StoredCuts, MAX_ANALYSIS_BYTES, MAX_SESSION_BYTES,
 };
 use photogramme_core::VideoInfo;
 use serde::{Deserialize, Serialize};
@@ -54,7 +54,10 @@ impl Tabs {
                 // Fichier abîmé ou modifié à la main : on garde ce qui est cohérent.
                 t.tabs.retain(|e| e.key == film_key(&e.path));
                 t.tabs.truncate(MAX_TABS);
-                if t.active.as_ref().is_some_and(|a| !t.tabs.iter().any(|e| &e.key == a)) {
+                if t.active
+                    .as_ref()
+                    .is_some_and(|a| !t.tabs.iter().any(|e| &e.key == a))
+                {
                     t.active = None;
                 }
                 t
@@ -65,7 +68,8 @@ impl Tabs {
     pub fn save(&self, root: &Path) -> Result<(), String> {
         let json = serde_json::to_vec_pretty(self).map_err(|e| e.to_string())?;
         let _g = io_lock();
-        write_atomic(&root.join("tabs.json"), &json).map_err(|e| format!("Cannot save the tabs: {e}"))
+        write_atomic(&root.join("tabs.json"), &json)
+            .map_err(|e| format!("Cannot save the tabs: {e}"))
     }
 
     /// Film ouvert : ajouté s'il n'a pas d'onglet, rendu actif.
@@ -73,7 +77,10 @@ impl Tabs {
         let key = film_key(path);
         match self.tabs.iter_mut().find(|e| e.key == key) {
             Some(e) => e.path = path.to_string(),
-            None => self.tabs.push(TabEntry { key: key.clone(), path: path.to_string() }),
+            None => self.tabs.push(TabEntry {
+                key: key.clone(),
+                path: path.to_string(),
+            }),
         }
         while self.tabs.len() > MAX_TABS {
             let i = self.tabs.iter().position(|e| e.key != key).unwrap_or(0);
@@ -91,7 +98,10 @@ impl Tabs {
     }
 
     pub fn path_of(&self, key: &str) -> Option<String> {
-        self.tabs.iter().find(|e| e.key == key).map(|e| e.path.clone())
+        self.tabs
+            .iter()
+            .find(|e| e.key == key)
+            .map(|e| e.path.clone())
     }
 }
 
@@ -123,8 +133,14 @@ impl From<&Tabs> for TabsView {
                     let p = Path::new(&e.path);
                     TabView {
                         key: e.key.clone(),
-                        file_name: p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-                        folder: p.parent().map(|d| d.to_string_lossy().to_string()).unwrap_or_default(),
+                        file_name: p
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        folder: p
+                            .parent()
+                            .map(|d| d.to_string_lossy().to_string())
+                            .unwrap_or_default(),
                         missing: !p.is_file(),
                     }
                 })
@@ -135,7 +151,9 @@ impl From<&Tabs> for TabsView {
 
 /// Appelé à chaque ouverture réussie d'un film.
 pub fn remember_opened(state: &AppState, path: &str) {
-    let Ok(_g) = state.tabs_lock.lock() else { return };
+    let Ok(_g) = state.tabs_lock.lock() else {
+        return;
+    };
     let mut t = Tabs::load(&state.projects_dir);
     t.opened(path);
     let _ = t.save(&state.projects_dir);
@@ -149,13 +167,21 @@ pub fn tabs_list(state: State<'_, AppState>) -> TabsView {
 
 /// Ouvre le film d'un onglet.
 #[tauri::command]
-pub async fn tab_open(app: AppHandle, state: State<'_, AppState>, key: String) -> Result<VideoInfo, String> {
+pub async fn tab_open(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    key: String,
+) -> Result<VideoInfo, String> {
     let path = {
         let _g = lock(&state.tabs_lock)?;
-        Tabs::load(&state.projects_dir).path_of(&key).ok_or("This tab no longer exists.")?
+        Tabs::load(&state.projects_dir)
+            .path_of(&key)
+            .ok_or("This tab no longer exists.")?
     };
     if !Path::new(&path).is_file() {
-        return Err(format!("The film is no longer at {path}. Reopen it from its new location with +."));
+        return Err(format!(
+            "The film is no longer at {path}. Reopen it from its new location with +."
+        ));
     }
     open_video_impl(&app, &state, &path).await
 }
@@ -213,13 +239,26 @@ struct Loaded {
 }
 
 fn load_project(dir: &Path, film: &Path, frames: u64) -> Loaded {
-    let mut out = Loaded { ui: None, analysis: None, cuts: None, changed: false };
-    let Ok(fp) = Fingerprint::of(film) else { return out };
-    if let Some(s) = fs::read(dir.join("session.json")).ok().and_then(|b| serde_json::from_slice::<SessionFile>(&b).ok()) {
+    let mut out = Loaded {
+        ui: None,
+        analysis: None,
+        cuts: None,
+        changed: false,
+    };
+    let Ok(fp) = Fingerprint::of(film) else {
+        return out;
+    };
+    if let Some(s) = fs::read(dir.join("session.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<SessionFile>(&b).ok())
+    {
         out.changed |= s.fingerprint != fp;
         out.ui = Some(s.ui);
     }
-    if let Some(c) = fs::read(dir.join("cuts.json")).ok().and_then(|b| serde_json::from_slice::<StoredCuts>(&b).ok()) {
+    if let Some(c) = fs::read(dir.join("cuts.json"))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<StoredCuts>(&b).ok())
+    {
         if c.fingerprint == fp {
             out.cuts = c.into_cuts(frames);
         } else {
@@ -268,7 +307,11 @@ pub async fn project_restore(state: State<'_, AppState>) -> Result<Restored, Str
         if slot.as_ref().is_none_or(|a| a.path != info.path) {
             let id = state.new_id();
             analysis = Some(summary(id, &data, None, 0.0));
-            *slot = Some(Arc::new(StoredAnalysis { id, path: info.path.clone(), data }));
+            *slot = Some(Arc::new(StoredAnalysis {
+                id,
+                path: info.path.clone(),
+                data,
+            }));
         }
     }
     if let Some(c) = &loaded.cuts {
@@ -277,12 +320,21 @@ pub async fn project_restore(state: State<'_, AppState>) -> Result<Restored, Str
             *slot = Some(Arc::new(c.clone()));
         }
     }
-    Ok(Restored { ui: loaded.ui, analysis, imported: loaded.cuts, film_changed: loaded.changed })
+    Ok(Restored {
+        ui: loaded.ui,
+        analysis,
+        imported: loaded.cuts,
+        film_changed: loaded.changed,
+    })
 }
 
 /// Enregistre l'état de l'interface pour le film ouvert (appelé en continu).
 #[tauri::command]
-pub async fn project_save(state: State<'_, AppState>, path: String, ui: serde_json::Value) -> Result<(), String> {
+pub async fn project_save(
+    state: State<'_, AppState>,
+    path: String,
+    ui: serde_json::Value,
+) -> Result<(), String> {
     let info = state.video()?;
     // L'état vient d'un film qui n'est plus ouvert (dépôt d'un autre film) :
     // l'écrire ici mélangerait deux projets.
@@ -291,13 +343,20 @@ pub async fn project_save(state: State<'_, AppState>, path: String, ui: serde_js
     }
     let dir = dir_of(&state, &info);
     tauri::async_runtime::spawn_blocking(move || {
-        let fingerprint = Fingerprint::of(Path::new(&info.path)).map_err(|e| format!("Cannot read the film: {e}"))?;
-        let json = serde_json::to_vec(&SessionFile { path: info.path, fingerprint, ui }).map_err(|e| e.to_string())?;
+        let fingerprint = Fingerprint::of(Path::new(&info.path))
+            .map_err(|e| format!("Cannot read the film: {e}"))?;
+        let json = serde_json::to_vec(&SessionFile {
+            path: info.path,
+            fingerprint,
+            ui,
+        })
+        .map_err(|e| e.to_string())?;
         if json.len() > MAX_SESSION_BYTES {
             return Err("The project is too large to be saved.".into());
         }
         let _g = io_lock();
-        write_atomic(&dir.join("session.json"), &json).map_err(|e| format!("Cannot save the project: {e}"))
+        write_atomic(&dir.join("session.json"), &json)
+            .map_err(|e| format!("Cannot save the project: {e}"))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -308,7 +367,9 @@ pub fn save_analysis(state: &AppState, stored: Arc<StoredAnalysis>) {
     let root = state.projects_dir.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let film = Path::new(&stored.path);
-        let Ok(fp) = Fingerprint::of(film) else { return };
+        let Ok(fp) = Fingerprint::of(film) else {
+            return;
+        };
         let bytes = encode_analysis(&stored.data, &fp);
         let bin = project::project_dir(&root, &stored.path).join("analysis.bin");
         let _g = io_lock();
@@ -340,7 +401,9 @@ pub fn save_cuts(state: &AppState, info: &VideoInfo, cuts: Option<&ImportedCuts>
 #[tauri::command]
 pub async fn project_cache_size(state: State<'_, AppState>) -> Result<u64, String> {
     let root = state.projects_dir.clone();
-    tauri::async_runtime::spawn_blocking(move || analyses_size(&root)).await.map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || analyses_size(&root))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Supprime les analyses gardées (les sessions et les onglets restent).
@@ -360,7 +423,10 @@ mod tests {
     use super::*;
 
     fn entry(p: &str) -> TabEntry {
-        TabEntry { key: film_key(p), path: p.into() }
+        TabEntry {
+            key: film_key(p),
+            path: p.into(),
+        }
     }
 
     #[test]
@@ -428,13 +494,26 @@ mod tests {
             frames: 2,
             scores: vec![0.0, 50.0],
             columns: vec![1; 2 * 3],
-            geometry: photogramme_core::analysis::Geometry { analysis_w: 2, analysis_h: 2, thumb_w: 2, thumb_h: 1 },
+            geometry: photogramme_core::analysis::Geometry {
+                analysis_w: 2,
+                analysis_h: 2,
+                thumb_w: 2,
+                thumb_h: 1,
+            },
             thumbs,
             decoder: photogramme_core::analysis::Decoder::Cpu,
         };
         write_atomic(&dir.join("analysis.bin"), &encode_analysis(&a, &fp)).unwrap();
-        let session = SessionFile { path: film.to_string_lossy().into(), fingerprint: fp, ui: serde_json::json!({"v": 1, "frame": 1}) };
-        write_atomic(&dir.join("session.json"), &serde_json::to_vec(&session).unwrap()).unwrap();
+        let session = SessionFile {
+            path: film.to_string_lossy().into(),
+            fingerprint: fp,
+            ui: serde_json::json!({"v": 1, "frame": 1}),
+        };
+        write_atomic(
+            &dir.join("session.json"),
+            &serde_json::to_vec(&session).unwrap(),
+        )
+        .unwrap();
 
         let l = load_project(&dir, &film, 2);
         assert!(l.analysis.is_some() && !l.changed);

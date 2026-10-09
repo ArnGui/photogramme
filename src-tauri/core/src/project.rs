@@ -33,7 +33,11 @@ const VERSION: u32 = 1;
 /// FNV plutôt que le hachage de la bibliothèque standard, qui peut changer
 /// d'une version de Rust à l'autre et perdrait tous les projets.
 pub fn film_key(path: &str) -> String {
-    let norm = if cfg!(windows) { path.to_lowercase() } else { path.to_string() };
+    let norm = if cfg!(windows) {
+        path.to_lowercase()
+    } else {
+        path.to_string()
+    };
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in norm.bytes() {
         h ^= b as u64;
@@ -59,7 +63,10 @@ impl Fingerprint {
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        Ok(Self { size: m.len(), modified })
+        Ok(Self {
+            size: m.len(),
+            modified,
+        })
     }
 }
 
@@ -165,7 +172,10 @@ pub fn decode_analysis(bytes: &[u8], expected: &Fingerprint) -> Result<Analysis,
     if r.take(4)? != MAGIC || r.u32()? != VERSION {
         return Err(LoadError::Invalid("not a Photogramme analysis"));
     }
-    let fp = Fingerprint { size: r.u64()?, modified: r.u64()? };
+    let fp = Fingerprint {
+        size: r.u64()?,
+        modified: r.u64()?,
+    };
     if fp != *expected {
         return Err(LoadError::Stale);
     }
@@ -175,9 +185,18 @@ pub fn decode_analysis(bytes: &[u8], expected: &Fingerprint) -> Result<Analysis,
         0 => Decoder::Cpu,
         _ => return Err(LoadError::Invalid("decoder")),
     };
-    let geometry = Geometry { analysis_w: r.u32()?, analysis_h: r.u32()?, thumb_w: r.u32()?, thumb_h: r.u32()? };
+    let geometry = Geometry {
+        analysis_w: r.u32()?,
+        analysis_h: r.u32()?,
+        thumb_w: r.u32()?,
+        thumb_h: r.u32()?,
+    };
     let n = r.len(4)?;
-    let scores = r.take(n * 4)?.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect::<Vec<_>>();
+    let scores = r
+        .take(n * 4)?
+        .chunks_exact(4)
+        .map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+        .collect::<Vec<_>>();
     let n = r.len(1)?;
     let columns = r.take(n)?.to_vec();
     let count = r.len(12)?;
@@ -203,7 +222,14 @@ pub fn decode_analysis(bytes: &[u8], expected: &Fingerprint) -> Result<Analysis,
     if thumbs.keys().any(|&f| f >= frames) {
         return Err(LoadError::Invalid("thumbnail out of range"));
     }
-    Ok(Analysis { frames, scores, columns, geometry, thumbs, decoder })
+    Ok(Analysis {
+        frames,
+        scores,
+        columns,
+        geometry,
+        thumbs,
+        decoder,
+    })
 }
 
 /* ───────────── Coupes importées ───────────── */
@@ -238,7 +264,8 @@ impl StoredCuts {
     /// Coupes reprises, si elles sont cohérentes avec un film de `frames` images.
     pub fn into_cuts(self, frames: u64) -> Option<ImportedCuts> {
         let sorted = self.cuts.windows(2).all(|w| w[0] < w[1]);
-        if !sorted || self.cuts.iter().any(|&c| c == 0 || c >= frames) || self.cuts.len() > 100_000 {
+        if !sorted || self.cuts.iter().any(|&c| c == 0 || c >= frames) || self.cuts.len() > 100_000
+        {
             return None;
         }
         Some(ImportedCuts {
@@ -284,7 +311,9 @@ pub fn analyses_size(root: &Path) -> u64 {
 
 /// (chemin, taille, date) de chaque `analysis.bin`.
 fn analyses(root: &Path) -> Vec<(PathBuf, u64, std::time::SystemTime)> {
-    let Ok(dirs) = fs::read_dir(root) else { return Vec::new() };
+    let Ok(dirs) = fs::read_dir(root) else {
+        return Vec::new();
+    };
     dirs.flatten()
         .map(|d| d.path().join("analysis.bin"))
         .filter_map(|p| {
@@ -306,7 +335,12 @@ mod tests {
             frames: 48,
             scores: (0..48).map(|i| i as f32 * 0.5).collect(),
             columns: (0..48 * 2 * 3).map(|i| (i % 251) as u8).collect(),
-            geometry: Geometry { analysis_w: 64, analysis_h: 36, thumb_w: 4, thumb_h: 2 },
+            geometry: Geometry {
+                analysis_w: 64,
+                analysis_h: 36,
+                thumb_w: 4,
+                thumb_h: 2,
+            },
             thumbs,
             decoder: Decoder::Gpu,
         }
@@ -321,7 +355,10 @@ mod tests {
         assert_eq!(a.decoder, b.decoder);
     }
 
-    const FP: Fingerprint = Fingerprint { size: 1234, modified: 5678 };
+    const FP: Fingerprint = Fingerprint {
+        size: 1234,
+        modified: 5678,
+    };
 
     #[test]
     fn analysis_round_trip() {
@@ -333,8 +370,28 @@ mod tests {
     #[test]
     fn changed_film_is_stale() {
         let bytes = encode_analysis(&sample(), &FP);
-        assert_eq!(decode_analysis(&bytes, &Fingerprint { size: 1234, modified: 9 }).err(), Some(LoadError::Stale));
-        assert_eq!(decode_analysis(&bytes, &Fingerprint { size: 1, modified: 5678 }).err(), Some(LoadError::Stale));
+        assert_eq!(
+            decode_analysis(
+                &bytes,
+                &Fingerprint {
+                    size: 1234,
+                    modified: 9
+                }
+            )
+            .err(),
+            Some(LoadError::Stale)
+        );
+        assert_eq!(
+            decode_analysis(
+                &bytes,
+                &Fingerprint {
+                    size: 1,
+                    modified: 5678
+                }
+            )
+            .err(),
+            Some(LoadError::Stale)
+        );
     }
 
     #[test]
@@ -342,7 +399,10 @@ mod tests {
         let bytes = encode_analysis(&sample(), &FP);
         // Toutes les troncatures, et chaque octet altéré : jamais de panique ni d'allocation folle.
         for n in 0..bytes.len() {
-            assert!(decode_analysis(&bytes[..n], &FP).is_err(), "truncated at {n}");
+            assert!(
+                decode_analysis(&bytes[..n], &FP).is_err(),
+                "truncated at {n}"
+            );
         }
         for i in 0..bytes.len() {
             let mut b = bytes.clone();
@@ -355,7 +415,10 @@ mod tests {
         // Longueur énorme annoncée : refusée avant toute allocation.
         let mut huge = bytes[..4 + 4 + 16 + 8 + 1 + 16].to_vec();
         huge.extend_from_slice(&u64::MAX.to_le_bytes());
-        assert_eq!(decode_analysis(&huge, &FP).err(), Some(LoadError::Invalid("bad length")));
+        assert_eq!(
+            decode_analysis(&huge, &FP).err(),
+            Some(LoadError::Invalid("bad length"))
+        );
     }
 
     #[test]
@@ -404,7 +467,8 @@ mod tests {
     }
 
     fn temp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("photogramme-project-{name}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("photogramme-project-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -428,7 +492,12 @@ mod tests {
             let p = d.join(k).join("analysis.bin");
             write_atomic(&p, &vec![0u8; size]).unwrap();
             let t = std::time::SystemTime::now() - std::time::Duration::from_secs(age_s);
-            fs::File::options().write(true).open(&p).unwrap().set_modified(t).unwrap();
+            fs::File::options()
+                .write(true)
+                .open(&p)
+                .unwrap()
+                .set_modified(t)
+                .unwrap();
             p
         };
         let old = mk("old", 100, 300);

@@ -46,7 +46,10 @@ pub fn group_frames(sorted: &[u64], fps: f64) -> Vec<DecodeGroup> {
                     g.offsets.push(off);
                 }
             }
-            _ => groups.push(DecodeGroup { first: f, offsets: vec![0] }),
+            _ => groups.push(DecodeGroup {
+                first: f,
+                offsets: vec![0],
+            }),
         }
     }
     groups
@@ -84,7 +87,10 @@ pub struct OutSize {
 
 impl OutSize {
     pub fn full(info: &VideoInfo) -> Self {
-        Self { width: info.out_width, height: info.out_height }
+        Self {
+            width: info.out_width,
+            height: info.out_height,
+        }
     }
 }
 
@@ -94,7 +100,12 @@ pub fn frame_len(size: OutSize, fmt: PixelFormat) -> usize {
 
 /// Arguments FFmpeg d'un groupe. Décodage processeur, comme la capture à
 /// l'unité (voir journal des décisions).
-pub fn group_args(info: &VideoInfo, group: &DecodeGroup, fmt: PixelFormat, size: OutSize) -> Vec<String> {
+pub fn group_args(
+    info: &VideoInfo,
+    group: &DecodeGroup,
+    fmt: PixelFormat,
+    size: OutSize,
+) -> Vec<String> {
     let ss = seek_seconds(group.first, info.fps_num, info.fps_den);
     // Après un seek précis, `n` repart de 0 sur l'image visée.
     let expr = group
@@ -103,7 +114,10 @@ pub fn group_args(info: &VideoInfo, group: &DecodeGroup, fmt: PixelFormat, size:
         .map(|o| format!("eq(n,{o})"))
         .collect::<Vec<_>>()
         .join("+");
-    let vf = format!("select='{expr}',{}", geometry_filter(info, fmt.name(), size.width, size.height));
+    let vf = format!(
+        "select='{expr}',{}",
+        geometry_filter(info, fmt.name(), size.width, size.height)
+    );
     let mut a = input_args(info, Some(ss));
     a.extend([
         "-map".into(),
@@ -134,7 +148,10 @@ pub struct FrameSplitter {
 
 impl FrameSplitter {
     pub fn new(frame_len: usize) -> Self {
-        Self { frame_len, buf: Vec::with_capacity(frame_len) }
+        Self {
+            frame_len,
+            buf: Vec::with_capacity(frame_len),
+        }
     }
 
     /// Ajoute des octets ; renvoie les images complétées.
@@ -145,7 +162,10 @@ impl FrameSplitter {
             self.buf.extend_from_slice(&data[..take]);
             data = &data[take..];
             if self.buf.len() == self.frame_len {
-                out.push(std::mem::replace(&mut self.buf, Vec::with_capacity(self.frame_len)));
+                out.push(std::mem::replace(
+                    &mut self.buf,
+                    Vec::with_capacity(self.frame_len),
+                ));
             }
         }
         out
@@ -157,8 +177,77 @@ impl FrameSplitter {
     }
 }
 
+/// Remise dans l'ordre du film d'images décodées en parallèle (plusieurs FFmpeg
+/// sur des morceaux différents) : la planche contact doit suivre le film.
+/// L'attente est bornée à un groupe de décodage (`MAX_PER_GROUP` images).
+#[derive(Debug)]
+pub struct InOrder<T> {
+    order: Vec<u64>,
+    next: usize,
+    pending: std::collections::HashMap<u64, T>,
+}
+
+impl<T> InOrder<T> {
+    /// `order` : les numéros d'image dans l'ordre voulu (chacun une fois).
+    pub fn new(mut order: Vec<u64>) -> Self {
+        order.dedup();
+        Self {
+            order,
+            next: 0,
+            pending: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Range une image arrivée, quel que soit son rang.
+    pub fn put(&mut self, frame: u64, value: T) {
+        self.pending.insert(frame, value);
+    }
+
+    /// L'image attendue, si elle est arrivée.
+    pub fn take_ready(&mut self) -> Option<T> {
+        let v = self.pending.remove(self.order.get(self.next)?)?;
+        self.next += 1;
+        Some(v)
+    }
+
+    /// Fin du décodage : ce qui reste, dans l'ordre (ne sert que si une image manquait).
+    pub fn take_rest(&mut self) -> Option<T> {
+        while self.next < self.order.len() {
+            let f = self.order[self.next];
+            self.next += 1;
+            if let Some(v) = self.pending.remove(&f) {
+                return Some(v);
+            }
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn remise_dans_l_ordre_du_film() {
+        // Deux FFmpeg en parallèle : #011 (100, 102, 104) et #015 (250, 253, 256) entrelacés.
+        let mut o = super::InOrder::new(vec![100, 102, 104, 250, 253, 256]);
+        let mut out = Vec::new();
+        for f in [250, 100, 253, 102, 256, 104] {
+            o.put(f, f);
+            while let Some(v) = o.take_ready() {
+                out.push(v);
+            }
+        }
+        assert_eq!(out, vec![100, 102, 104, 250, 253, 256]);
+        assert_eq!(o.take_ready(), None);
+        // Une image manquante ne bloque pas la fin : le reste sort dans l'ordre.
+        let mut o = super::InOrder::new(vec![1, 2, 3]);
+        o.put(3, 3);
+        o.put(1, 1);
+        assert_eq!(o.take_ready(), Some(1));
+        assert_eq!(o.take_ready(), None);
+        assert_eq!(o.take_rest(), Some(3));
+        assert_eq!(o.take_rest(), None);
+    }
+
     use super::*;
 
     fn info() -> VideoInfo {
@@ -172,9 +261,22 @@ mod tests {
         // Écart de fusion à 24 i/s : 72 images.
         let g = group_frames(&[10, 20, 82, 155, 2000, 2000], 24.0);
         assert_eq!(g.len(), 3);
-        assert_eq!(g[0], DecodeGroup { first: 10, offsets: vec![0, 10, 72] });
+        assert_eq!(
+            g[0],
+            DecodeGroup {
+                first: 10,
+                offsets: vec![0, 10, 72]
+            }
+        );
         assert_eq!(g[1].first, 155);
-        assert_eq!(g[2], DecodeGroup { first: 2000, offsets: vec![0] }, "doublon retiré");
+        assert_eq!(
+            g[2],
+            DecodeGroup {
+                first: 2000,
+                offsets: vec![0]
+            },
+            "doublon retiré"
+        );
         assert_eq!(g[0].frames().collect::<Vec<_>>(), vec![10, 20, 82]);
     }
 
@@ -182,13 +284,24 @@ mod tests {
     fn taille_de_groupe_bornee() {
         let frames: Vec<u64> = (0..250).collect();
         let g = group_frames(&frames, 24.0);
-        assert_eq!(g.iter().map(|x| x.offsets.len()).collect::<Vec<_>>(), vec![100, 100, 50]);
+        assert_eq!(
+            g.iter().map(|x| x.offsets.len()).collect::<Vec<_>>(),
+            vec![100, 100, 50]
+        );
         assert_eq!(g[1].first, 100);
     }
 
     #[test]
     fn arguments_d_un_groupe() {
-        let a = group_args(&info(), &DecodeGroup { first: 48, offsets: vec![0, 3] }, PixelFormat::Rgba, OutSize::full(&info()));
+        let a = group_args(
+            &info(),
+            &DecodeGroup {
+                first: 48,
+                offsets: vec![0, 3],
+            },
+            PixelFormat::Rgba,
+            OutSize::full(&info()),
+        );
         let at = |k: &str| a.iter().position(|x| x == k).unwrap();
         assert_eq!(a[at("-i") + 1], r"D:\x'y.mp4");
         assert!(at("-ss") < at("-i"), "seek rapide avant -i");
@@ -198,7 +311,18 @@ mod tests {
         assert!(vf.ends_with("format=rgba"));
         assert_eq!(a.last().unwrap(), "-");
         assert_eq!(frame_len(OutSize::full(&info()), PixelFormat::Rgba), 32);
-        let small = group_args(&info(), &DecodeGroup { first: 0, offsets: vec![0] }, PixelFormat::Rgba, OutSize { width: 2, height: 2 });
+        let small = group_args(
+            &info(),
+            &DecodeGroup {
+                first: 0,
+                offsets: vec![0],
+            },
+            PixelFormat::Rgba,
+            OutSize {
+                width: 2,
+                height: 2,
+            },
+        );
         assert!(small.iter().any(|x| x.contains("w=2:h=2")));
     }
 

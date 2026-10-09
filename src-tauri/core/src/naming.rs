@@ -44,7 +44,12 @@ pub fn capture_file_name(video_file_name: &str, timecode: &str) -> String {
 
 /// "mon_film_P0012_00-42-17-12.jpg" : numéro de plan sur 4 chiffres pour
 /// que l'Explorateur trie les fichiers dans l'ordre du film.
-pub fn shot_file_name(video_file_name: &str, timecode: &str, shot: Option<u32>, ext: &str) -> String {
+pub fn shot_file_name(
+    video_file_name: &str,
+    timecode: &str,
+    shot: Option<u32>,
+    ext: &str,
+) -> String {
     let stem = film_stem(video_file_name);
     match shot {
         None => format!("{stem}_{}.{ext}", tc_for_file(timecode)),
@@ -80,8 +85,14 @@ pub fn unique_path(dir: &Path, file_name: &str) -> PathBuf {
         return first;
     }
     let p = Path::new(file_name);
-    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let ext = p.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let stem = p
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let ext = p
+        .extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
     (2..)
         .map(|i| dir.join(format!("{stem}_{i}.{ext}")))
         .find(|c| !c.exists())
@@ -94,7 +105,10 @@ mod tests {
 
     #[test]
     fn retire_les_caracteres_interdits() {
-        assert_eq!(sanitize_stem(r#"Mon film: "final" v2?"#), "Mon_film___final__v2");
+        assert_eq!(
+            sanitize_stem(r#"Mon film: "final" v2?"#),
+            "Mon_film___final__v2"
+        );
         assert_eq!(sanitize_stem("con"), "_con");
         assert_eq!(sanitize_stem("..."), "capture");
         assert_eq!(sanitize_stem("Été à Lodève"), "Été_à_Lodève");
@@ -110,13 +124,26 @@ mod tests {
 
     #[test]
     fn nom_avec_plan_et_dossier() {
-        assert_eq!(shot_file_name("Film.mov", "00:00:01:00", Some(12), "jpg"), "Film_P0012_00-00-01-00.jpg");
-        assert_eq!(shot_file_name("Film.mov", "00:00:01:00", None, "png"), "Film_00-00-01-00.png");
-        assert_eq!(shot_file_name("Film.mov", "01:00:00;02", None, "jpg"), "Film_01-00-00-02.jpg", "drop-frame");
+        assert_eq!(
+            shot_file_name("Film.mov", "00:00:01:00", Some(12), "jpg"),
+            "Film_P0012_00-00-01-00.jpg"
+        );
+        assert_eq!(
+            shot_file_name("Film.mov", "00:00:01:00", None, "png"),
+            "Film_00-00-01-00.png"
+        );
+        assert_eq!(
+            shot_file_name("Film.mov", "01:00:00;02", None, "jpg"),
+            "Film_01-00-00-02.jpg",
+            "drop-frame"
+        );
         assert_eq!(film_stem("Le Film.mp4"), "Le_Film");
         let dir = std::env::temp_dir().join(format!("photogramme-dir-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("f_plans")).unwrap();
-        assert_eq!(unique_dir(&dir, "f_plans").file_name().unwrap(), "f_plans_2");
+        assert_eq!(
+            unique_dir(&dir, "f_plans").file_name().unwrap(),
+            "f_plans_2"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

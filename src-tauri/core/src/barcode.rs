@@ -20,12 +20,20 @@ pub enum BarcodeMode {
 
 fn to_linear(c: u8) -> f32 {
     let c = c as f32 / 255.0;
-    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 fn to_srgb(c: f32) -> u8 {
     let c = c.clamp(0.0, 1.0);
-    let v = if c <= 0.003_130_8 { 12.92 * c } else { 1.055 * c.powf(1.0 / 2.4) - 0.055 };
+    let v = if c <= 0.003_130_8 {
+        12.92 * c
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
     (v * 255.0).round() as u8
 }
 
@@ -79,7 +87,8 @@ pub fn render(
             BarcodeMode::Vertical => {
                 for y in 0..oh {
                     // Interpolation linéaire entre les lignes de la colonne.
-                    let pos = ((y as f32 + 0.5) * col_h as f32 / oh as f32 - 0.5).clamp(0.0, (col_h - 1) as f32);
+                    let pos = ((y as f32 + 0.5) * col_h as f32 / oh as f32 - 0.5)
+                        .clamp(0.0, (col_h - 1) as f32);
                     let r0 = pos.floor() as usize;
                     let r1 = (r0 + 1).min(col_h - 1);
                     let t = pos - r0 as f32;

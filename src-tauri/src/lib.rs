@@ -73,12 +73,22 @@ pub fn run() {
             let projects = app.path().app_local_data_dir()?.join("projects");
             let settings_path = config.join("settings.json");
             let loaded = settings::load(&settings_path);
-            if let Some(dir) = loaded.output_dir.as_deref().filter(|d| Path::new(d).is_dir()) {
+            if let Some(dir) = loaded
+                .output_dir
+                .as_deref()
+                .filter(|d| Path::new(d).is_dir())
+            {
                 let _ = app.asset_protocol_scope().allow_directory(dir, false);
             }
             app.manage(watchdog::Watchdog::default());
             watchdog::start(app.handle().clone());
-            app.manage(AppState::new(loaded, settings_path, config.join("presets"), projects, pubkey.is_some()));
+            app.manage(AppState::new(
+                loaded,
+                settings_path,
+                config.join("presets"),
+                projects,
+                pubkey.is_some(),
+            ));
             if let Some(film) = film::startup_film(std::env::args()) {
                 film::open_at_startup(app.handle(), &film);
             }

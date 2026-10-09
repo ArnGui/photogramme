@@ -16,11 +16,20 @@ use tauri_plugin_dialog::DialogExt;
 /// Extensions acceptées à l'ouverture (films finis en H.264).
 pub const VIDEO_EXTENSIONS: [&str; 4] = ["mp4", "mov", "m4v", "mkv"];
 
-pub async fn open_video_impl<R: Runtime>(app: &AppHandle<R>, state: &AppState, path: &str) -> Result<VideoInfo, String> {
+pub async fn open_video_impl<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &AppState,
+    path: &str,
+) -> Result<VideoInfo, String> {
     let p = Path::new(path);
-    let ext = p.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
     if !VIDEO_EXTENSIONS.contains(&ext.as_str()) {
-        return Err(format!(".{ext} files are not supported (mp4, mov, m4v, mkv)."));
+        return Err(format!(
+            ".{ext} files are not supported (mp4, mov, m4v, mkv)."
+        ));
     }
     if !p.is_file() {
         return Err("File not found.".into());
@@ -48,10 +57,17 @@ pub async fn open_video_impl<R: Runtime>(app: &AppHandle<R>, state: &AppState, p
 
 /// Sélecteur de film ouvert côté Rust (aucun effet sur les scopes).
 #[tauri::command]
-pub async fn pick_video(app: AppHandle, state: State<'_, AppState>) -> Result<Option<VideoInfo>, String> {
+pub async fn pick_video(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<VideoInfo>, String> {
     let a = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
-        let mut d = a.dialog().file().set_title("Open a film").add_filter("H.264 video", &VIDEO_EXTENSIONS);
+        let mut d = a
+            .dialog()
+            .file()
+            .set_title("Open a film")
+            .add_filter("H.264 video", &VIDEO_EXTENSIONS);
         if let Some(w) = a.get_webview_window("main") {
             d = d.set_parent(&w);
         }
@@ -60,7 +76,9 @@ pub async fn pick_video(app: AppHandle, state: State<'_, AppState>) -> Result<Op
     .await
     .map_err(|e| e.to_string())?;
     match picked.and_then(|f| f.into_path().ok()) {
-        Some(p) => open_video_impl(&app, &state, &p.to_string_lossy()).await.map(Some),
+        Some(p) => open_video_impl(&app, &state, &p.to_string_lossy())
+            .await
+            .map(Some),
         None => Ok(None),
     }
 }
@@ -84,19 +102,25 @@ pub enum FilmEvent {
 /// premier argument qui est un fichier vidéo existant. Les options
 /// (`-psn_…` ajouté par d'anciens macOS) sont ignorées.
 pub fn startup_film(args: impl IntoIterator<Item = String>) -> Option<PathBuf> {
-    args.into_iter().skip(1).filter(|a| !a.starts_with('-')).map(PathBuf::from).find(|p| {
-        p.extension()
-            .map(|e| VIDEO_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str()))
-            .unwrap_or(false)
-            && p.is_file()
-    })
+    args.into_iter()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .map(PathBuf::from)
+        .find(|p| {
+            p.extension()
+                .map(|e| VIDEO_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str()))
+                .unwrap_or(false)
+                && p.is_file()
+        })
 }
 
 /// Ouvre le film passé au lancement, AVANT que l'interface ne se charge :
 /// elle le trouve en demandant `current_video`, comme après un rechargement.
 /// Même chemin que le sélecteur (sonde, scope asset fichier par fichier).
 pub fn open_at_startup<R: Runtime>(app: &AppHandle<R>, path: &Path) {
-    let Some(state) = app.try_state::<AppState>() else { return };
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
     let path = path.to_string_lossy().to_string();
     if let Err(e) = tauri::async_runtime::block_on(open_video_impl(app, &state, &path)) {
         eprintln!("Photogramme: cannot open {path}: {e}");
@@ -111,14 +135,23 @@ pub fn on_drop<R: Runtime>(app: &AppHandle<R>, paths: &[PathBuf]) {
             .unwrap_or(false)
     });
     let Some(path) = film.cloned() else {
-        let _ = app.emit("film", FilmEvent::Failed { message: "This file is not a supported video.".into() });
+        let _ = app.emit(
+            "film",
+            FilmEvent::Failed {
+                message: "This file is not a supported video.".into(),
+            },
+        );
         return;
     };
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        let Some(state) = app.try_state::<AppState>() else { return };
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
         let ev = match open_video_impl(&app, &state, &path.to_string_lossy()).await {
-            Ok(info) => FilmEvent::Opened { info: Box::new(info) },
+            Ok(info) => FilmEvent::Opened {
+                info: Box::new(info),
+            },
             Err(message) => FilmEvent::Failed { message },
         };
         let _ = app.emit("film", ev);

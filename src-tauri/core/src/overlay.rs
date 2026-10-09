@@ -81,7 +81,12 @@ pub struct Font {
 
 impl Default for Font {
     fn default() -> Self {
-        Self { family: "Barlow Condensed".into(), size: 28.0, weight: 500, italic: false }
+        Self {
+            family: "Barlow Condensed".into(),
+            size: 28.0,
+            weight: 500,
+            italic: false,
+        }
     }
 }
 
@@ -97,7 +102,13 @@ pub struct FrameBox {
 
 impl Default for FrameBox {
     fn default() -> Self {
-        Self { pad_top: 0.0, pad_right: 0.0, pad_bottom: 0.0, pad_left: 0.0, background: "#000000".into() }
+        Self {
+            pad_top: 0.0,
+            pad_right: 0.0,
+            pad_bottom: 0.0,
+            pad_left: 0.0,
+            background: "#000000".into(),
+        }
     }
 }
 
@@ -129,7 +140,12 @@ impl Default for PaletteBand {
             margin: 24.0,
             align: Align::Left,
             show_hex: false,
-            hex_font: Font { family: "IBM Plex Mono".into(), size: 16.0, weight: 400, italic: false },
+            hex_font: Font {
+                family: "IBM Plex Mono".into(),
+                size: 16.0,
+                weight: 400,
+                italic: false,
+            },
             hex_color: "#A39E94".into(),
         }
     }
@@ -251,11 +267,19 @@ fn color(s: &str, fallback: &str) -> String {
     let ok = t.starts_with('#')
         && matches!(t.len(), 4 | 7 | 9)
         && t[1..].chars().all(|c| c.is_ascii_hexdigit());
-    if ok { t.to_uppercase() } else { fallback.into() }
+    if ok {
+        t.to_uppercase()
+    } else {
+        fallback.into()
+    }
 }
 
 fn num(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
-    if v.is_finite() { v.clamp(lo, hi) } else { fallback }
+    if v.is_finite() {
+        v.clamp(lo, hi)
+    } else {
+        fallback
+    }
 }
 
 /// Nom de police utilisable dans `ctx.font` : pas de guillemets, points-virgules
@@ -263,15 +287,24 @@ fn num(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
 fn family(s: &str) -> String {
     let f: String = s
         .chars()
-        .filter(|c| !matches!(c, '"' | '\'' | ';' | '{' | '}' | '\\' | '<' | '>') && !c.is_control())
+        .filter(|c| {
+            !matches!(c, '"' | '\'' | ';' | '{' | '}' | '\\' | '<' | '>') && !c.is_control()
+        })
         .take(64)
         .collect();
     let f = f.trim().to_string();
-    if f.is_empty() { "Barlow".into() } else { f }
+    if f.is_empty() {
+        "Barlow".into()
+    } else {
+        f
+    }
 }
 
 fn clean_text(s: &str, max: usize) -> String {
-    s.chars().filter(|c| !c.is_control() || *c == '\n').take(max).collect()
+    s.chars()
+        .filter(|c| !c.is_control() || *c == '\n')
+        .take(max)
+        .collect()
 }
 
 impl Font {
@@ -290,7 +323,12 @@ impl OverlayPreset {
             self.name = "Untitled".into();
         }
         let f = &mut self.frame;
-        for p in [&mut f.pad_top, &mut f.pad_right, &mut f.pad_bottom, &mut f.pad_left] {
+        for p in [
+            &mut f.pad_top,
+            &mut f.pad_right,
+            &mut f.pad_bottom,
+            &mut f.pad_left,
+        ] {
             *p = num(*p, 0.0, 2000.0, 0.0);
         }
         f.background = color(&f.background, "#000000");
@@ -329,11 +367,24 @@ impl OverlayPreset {
     }
 }
 
-fn text(id: &str, template: &str, family: &str, size: f32, weight: u16, anchor: Anchor, region: Region) -> TextItem {
+fn text(
+    id: &str,
+    template: &str,
+    family: &str,
+    size: f32,
+    weight: u16,
+    anchor: Anchor,
+    region: Region,
+) -> TextItem {
     TextItem {
         id: id.into(),
         template: template.into(),
-        font: Font { family: family.into(), size, weight, italic: false },
+        font: Font {
+            family: family.into(),
+            size,
+            weight,
+            italic: false,
+        },
         anchor,
         region,
         ..Default::default()
@@ -344,7 +395,13 @@ fn text(id: &str, template: &str, family: &str, size: f32, weight: u16, anchor: 
 pub fn builtin_presets() -> Vec<OverlayPreset> {
     let cinema = OverlayPreset {
         name: "Cinema".into(),
-        frame: FrameBox { pad_top: 48.0, pad_right: 48.0, pad_bottom: 40.0, pad_left: 48.0, background: "#0B0B0C".into() },
+        frame: FrameBox {
+            pad_top: 48.0,
+            pad_right: 48.0,
+            pad_bottom: 40.0,
+            pad_left: 48.0,
+            background: "#0B0B0C".into(),
+        },
         palette: PaletteBand::default(),
         texts: vec![
             TextItem {
@@ -355,14 +412,30 @@ pub fn builtin_presets() -> Vec<OverlayPreset> {
                 // Dans la bande, au-dessus du timecode.
                 offset_x: 48.0,
                 offset_y: 84.0,
-                ..text("film", "{film}", "Barlow Condensed", 30.0, 600, Anchor::BottomRight, Region::Canvas)
+                ..text(
+                    "film",
+                    "{film}",
+                    "Barlow Condensed",
+                    30.0,
+                    600,
+                    Anchor::BottomRight,
+                    Region::Canvas,
+                )
             },
             TextItem {
                 color: "#E0A43B".into(),
                 shadow: false,
                 offset_x: 48.0,
                 offset_y: 40.0,
-                ..text("tc", "{tc}", "IBM Plex Mono", 26.0, 500, Anchor::BottomRight, Region::Canvas)
+                ..text(
+                    "tc",
+                    "{tc}",
+                    "IBM Plex Mono",
+                    26.0,
+                    500,
+                    Anchor::BottomRight,
+                    Region::Canvas,
+                )
             },
         ],
         scope: ScopeInset::default(),
@@ -370,13 +443,30 @@ pub fn builtin_presets() -> Vec<OverlayPreset> {
     let minimal = OverlayPreset {
         name: "Minimal".into(),
         frame: FrameBox::default(),
-        palette: PaletteBand { enabled: false, ..Default::default() },
-        texts: vec![text("tc", "{tc}", "IBM Plex Mono", 28.0, 500, Anchor::BottomRight, Region::Image)],
+        palette: PaletteBand {
+            enabled: false,
+            ..Default::default()
+        },
+        texts: vec![text(
+            "tc",
+            "{tc}",
+            "IBM Plex Mono",
+            28.0,
+            500,
+            Anchor::BottomRight,
+            Region::Image,
+        )],
         scope: ScopeInset::default(),
     };
     let fiche = OverlayPreset {
         name: "Color sheet".into(),
-        frame: FrameBox { pad_top: 32.0, pad_right: 32.0, pad_bottom: 32.0, pad_left: 32.0, background: "#F2EFE9".into() },
+        frame: FrameBox {
+            pad_top: 32.0,
+            pad_right: 32.0,
+            pad_bottom: 32.0,
+            pad_left: 32.0,
+            background: "#F2EFE9".into(),
+        },
         palette: PaletteBand {
             style: SwatchStyle::Fill,
             size: 120.0,
@@ -392,7 +482,15 @@ pub fn builtin_presets() -> Vec<OverlayPreset> {
             box_enabled: false,
             offset_x: 32.0,
             offset_y: 8.0,
-            ..text("caption", "{film} — {tc}", "Barlow", 22.0, 400, Anchor::TopLeft, Region::Canvas)
+            ..text(
+                "caption",
+                "{film} — {tc}",
+                "Barlow",
+                22.0,
+                400,
+                Anchor::TopLeft,
+                Region::Canvas,
+            )
         }],
         scope: ScopeInset::default(),
     };
@@ -400,14 +498,29 @@ pub fn builtin_presets() -> Vec<OverlayPreset> {
     let qc = OverlayPreset {
         name: "Grading check".into(),
         frame: FrameBox::default(),
-        palette: PaletteBand { enabled: false, ..Default::default() },
+        palette: PaletteBand {
+            enabled: false,
+            ..Default::default()
+        },
         texts: vec![TextItem {
             box_enabled: true,
             box_opacity: 0.6,
             shadow: false,
-            ..text("tc", "{tc}  ·  {clip}", "IBM Plex Mono", 22.0, 500, Anchor::BottomLeft, Region::Image)
+            ..text(
+                "tc",
+                "{tc}  ·  {clip}",
+                "IBM Plex Mono",
+                22.0,
+                500,
+                Anchor::BottomLeft,
+                Region::Image,
+            )
         }],
-        scope: ScopeInset { enabled: true, kind: ScopeKind::Parade, ..Default::default() },
+        scope: ScopeInset {
+            enabled: true,
+            kind: ScopeKind::Parade,
+            ..Default::default()
+        },
     };
     vec![cinema, minimal, fiche, qc]
 }
@@ -425,8 +538,15 @@ pub fn list_presets(dir: &Path) -> Vec<OverlayPreset> {
             .flatten()
             .flatten()
             .map(|e| e.path())
-            .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("json")))
-            .filter(|p| std::fs::metadata(p).map(|m| m.len() < 256 * 1024).unwrap_or(false))
+            .filter(|p| {
+                p.extension()
+                    .is_some_and(|e| e.eq_ignore_ascii_case("json"))
+            })
+            .filter(|p| {
+                std::fs::metadata(p)
+                    .map(|m| m.len() < 256 * 1024)
+                    .unwrap_or(false)
+            })
             .filter_map(|p| std::fs::read_to_string(p).ok())
             .filter_map(|s| serde_json::from_str::<OverlayPreset>(&s).ok())
             .map(OverlayPreset::sanitized)
@@ -440,7 +560,10 @@ pub fn list_presets(dir: &Path) -> Vec<OverlayPreset> {
         // (un préréglage supprimé ensuite par l'utilisateur ne revient pas).
         let marker = dir.join(".builtins-0.4");
         if !marker.exists() {
-            for p in builtin_presets().into_iter().filter(|p| p.name == "Grading check") {
+            for p in builtin_presets()
+                .into_iter()
+                .filter(|p| p.name == "Grading check")
+            {
                 if !found.iter().any(|f| f.name == p.name) {
                     let _ = save_preset(dir, &p);
                 }
@@ -455,7 +578,11 @@ pub fn list_presets(dir: &Path) -> Vec<OverlayPreset> {
     }
     let _ = std::fs::write(dir.join(".builtins-0.4"), b"");
     let v = read();
-    if v.is_empty() { builtin_presets() } else { v }
+    if v.is_empty() {
+        builtin_presets()
+    } else {
+        v
+    }
 }
 
 pub fn save_preset(dir: &Path, preset: &OverlayPreset) -> Result<OverlayPreset, String> {
@@ -482,7 +609,8 @@ mod tests {
     use super::*;
 
     fn tmpdir(tag: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("photogramme-presets-{tag}-{}", std::process::id()));
+        let d =
+            std::env::temp_dir().join(format!("photogramme-presets-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         d
     }
@@ -498,7 +626,9 @@ mod tests {
         // "oops" n'est pas un nombre : serde refuse, ce qui protège aussi.
         assert!(serde_json::from_str::<OverlayPreset>(json).is_err());
         let json = json.replace("\"oops\"", "12");
-        let p = serde_json::from_str::<OverlayPreset>(&json).unwrap().sanitized();
+        let p = serde_json::from_str::<OverlayPreset>(&json)
+            .unwrap()
+            .sanitized();
         assert_eq!(p.name, "Untitled");
         assert_eq!(p.frame.pad_top, 0.0);
         assert_eq!(p.frame.background, "#000000");
@@ -517,7 +647,10 @@ mod tests {
         assert_eq!(p.texts[0].template, "{tc}");
         assert!(p.palette.enabled);
         let names: Vec<_> = builtin_presets().into_iter().map(|p| p.name).collect();
-        assert_eq!(names, vec!["Cinema", "Minimal", "Color sheet", "Grading check"]);
+        assert_eq!(
+            names,
+            vec!["Cinema", "Minimal", "Color sheet", "Grading check"]
+        );
         assert!(!p.scope.enabled, "préréglage ancien : pas de scope");
     }
 
@@ -531,7 +664,11 @@ mod tests {
         }
         assert_eq!(list_presets(&dir).len(), 4);
         delete_preset(&dir, "Grading check").unwrap();
-        assert_eq!(list_presets(&dir).len(), 3, "supprimé par l'utilisateur : ne revient pas");
+        assert_eq!(
+            list_presets(&dir).len(),
+            3,
+            "supprimé par l'utilisateur : ne revient pas"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -543,7 +680,10 @@ mod tests {
         let mut p = first[0].clone();
         p.name = "../../My preset".into();
         save_preset(&dir, &p).unwrap();
-        assert!(dir.join("My_preset.json").is_file(), "nom nettoyé, jamais de chemin");
+        assert!(
+            dir.join("My_preset.json").is_file(),
+            "nom nettoyé, jamais de chemin"
+        );
         assert_eq!(list_presets(&dir).len(), 5);
         delete_preset(&dir, "../../My preset").unwrap();
         assert_eq!(list_presets(&dir).len(), 4);

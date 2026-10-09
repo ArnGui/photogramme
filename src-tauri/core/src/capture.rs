@@ -87,8 +87,27 @@ pub fn capture_converted(
     }
     let icc = icc_profile(settings.export.color);
     let fmt = settings.export.format;
-    let data = encode_image(px, info.out_width, info.out_height, false, fmt, settings.quality, settings.chroma, icc.as_deref())?;
-    write_image(info, frame, shot, &data, fmt, info.out_width, info.out_height, settings.quality, out_dir)
+    let data = encode_image(
+        px,
+        info.out_width,
+        info.out_height,
+        false,
+        fmt,
+        settings.quality,
+        settings.chroma,
+        icc.as_deref(),
+    )?;
+    write_image(
+        info,
+        frame,
+        shot,
+        &data,
+        fmt,
+        info.out_width,
+        info.out_height,
+        settings.quality,
+        out_dir,
+    )
 }
 
 /// Image composée par l'interface (overlay) : RVBA, dimensions libres
@@ -107,7 +126,12 @@ pub fn capture_from_rgba(
     out_dir: &Path,
 ) -> Result<CaptureResult, String> {
     // Bornes du JPEG (65 535 px) et de la surface d'un Canvas Chromium (~268 Mpx).
-    if width == 0 || height == 0 || width > 65_535 || height > 65_535 || width as u64 * height as u64 > 268_435_456 {
+    if width == 0
+        || height == 0
+        || width > 65_535
+        || height > 65_535
+        || width as u64 * height as u64 > 268_435_456
+    {
         return Err("Invalid composition size.".into());
     }
     if rgba.len() != width as usize * height as usize * 4 {
@@ -123,8 +147,27 @@ pub fn capture_from_rgba(
     }
     let icc = icc_profile(settings.export.color);
     let fmt = settings.export.format;
-    let data = encode_image(rgba, width, height, true, fmt, settings.quality, settings.chroma, icc.as_deref())?;
-    write_image(info, frame, shot, &data, fmt, width, height, settings.quality, out_dir)
+    let data = encode_image(
+        rgba,
+        width,
+        height,
+        true,
+        fmt,
+        settings.quality,
+        settings.chroma,
+        icc.as_deref(),
+    )?;
+    write_image(
+        info,
+        frame,
+        shot,
+        &data,
+        fmt,
+        width,
+        height,
+        settings.quality,
+        out_dir,
+    )
 }
 
 /// Écrit un fichier sans jamais écraser l'existant : `.part` puis renommage.
@@ -152,18 +195,28 @@ fn write_image(
     out_dir: &Path,
 ) -> Result<CaptureResult, String> {
     let timecode = info.tc(frame);
-    let path = unique_path(out_dir, &shot_file_name(&info.file_name, &timecode, shot, fmt.extension()));
+    let path = unique_path(
+        out_dir,
+        &shot_file_name(&info.file_name, &timecode, shot, fmt.extension()),
+    );
     write_new_file(&path, data)?;
 
     Ok(CaptureResult {
-        file_name: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        file_name: path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default(),
         path: path.to_string_lossy().to_string(),
         frame,
         timecode,
         bytes: data.len() as u64,
         width,
         height,
-        quality: if fmt == ImageFormat::Png { 100 } else { quality },
+        quality: if fmt == ImageFormat::Png {
+            100
+        } else {
+            quality
+        },
         shot,
     })
 }
@@ -183,7 +236,9 @@ pub struct CsvRow {
 /// Liste des images exportées, en CSV pour Excel (UTF-8 avec BOM, « ; »).
 pub fn export_csv(info: &VideoInfo, rows: &[CsvRow]) -> String {
     let with_palette = rows.iter().any(|r| r.palette.is_some());
-    let mut s = String::from("\u{FEFF}file;frame;frame_tc;shot;clip;shot_tc_in;shot_tc_last_frame;shot_length_frames");
+    let mut s = String::from(
+        "\u{FEFF}file;frame;frame_tc;shot;clip;shot_tc_in;shot_tc_last_frame;shot_length_frames",
+    );
     if with_palette {
         s.push_str(";palette");
     }
@@ -193,7 +248,12 @@ pub fn export_csv(info: &VideoInfo, rows: &[CsvRow]) -> String {
     for r in rows {
         let c = r.capture.as_ref().expect("filtré");
         let (shot, tin, tout, dur) = match (c.shot, r.span) {
-            (Some(n), Some((a, b))) => (n.to_string(), info.tc(a), info.tc(b.saturating_sub(1)), (b - a).to_string()),
+            (Some(n), Some((a, b))) => (
+                n.to_string(),
+                info.tc(a),
+                info.tc(b.saturating_sub(1)),
+                (b - a).to_string(),
+            ),
             _ => Default::default(),
         };
         s.push_str(&format!(
@@ -209,7 +269,9 @@ pub fn export_csv(info: &VideoInfo, rows: &[CsvRow]) -> String {
         ));
         if with_palette {
             s.push(';');
-            s.push_str(&csv_field(&r.palette.as_ref().map(|p| p.join(" ")).unwrap_or_default()));
+            s.push_str(&csv_field(
+                &r.palette.as_ref().map(|p| p.join(" ")).unwrap_or_default(),
+            ));
         }
         s.push_str("\r\n");
     }
@@ -219,7 +281,11 @@ pub fn export_csv(info: &VideoInfo, rows: &[CsvRow]) -> String {
 /// Champ CSV sûr : guillemets si besoin (RFC 4180), et neutralisation des
 /// formules (un nom de film commençant par « = » serait exécuté par Excel).
 fn csv_field(v: &str) -> String {
-    let v = if v.starts_with(['=', '+', '-', '@']) { format!("'{v}") } else { v.to_string() };
+    let v = if v.starts_with(['=', '+', '-', '@']) {
+        format!("'{v}")
+    } else {
+        v.to_string()
+    };
     if v.contains([';', '"', '\n', '\r']) {
         format!("\"{}\"", v.replace('"', "\"\""))
     } else {
@@ -247,12 +313,34 @@ mod tests {
     fn composition_rvba_avec_marges() {
         let dir = tmpdir("rgba");
         let rgba = vec![200u8; 6 * 5 * 4];
-        let r = capture_from_rgba(&info(), 30, Some(2), &rgba, 6, 5, &Settings::default(), &dir).unwrap();
+        let r = capture_from_rgba(
+            &info(),
+            30,
+            Some(2),
+            &rgba,
+            6,
+            5,
+            &Settings::default(),
+            &dir,
+        )
+        .unwrap();
         assert_eq!(r.file_name, "Film;_v2_P0002_00-00-01-05.jpg");
         assert_eq!((r.width, r.height, r.shot), (6, 5, Some(2)));
         assert!(std::path::Path::new(&r.path).is_file());
-        assert!(capture_from_rgba(&info(), 30, None, &rgba, 6, 4, &Settings::default(), &dir).is_err());
-        assert!(capture_from_rgba(&info(), 30, None, &rgba, 65_000, 65_000, &Settings::default(), &dir).is_err());
+        assert!(
+            capture_from_rgba(&info(), 30, None, &rgba, 6, 4, &Settings::default(), &dir).is_err()
+        );
+        assert!(capture_from_rgba(
+            &info(),
+            30,
+            None,
+            &rgba,
+            65_000,
+            65_000,
+            &Settings::default(),
+            &dir
+        )
+        .is_err());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -265,7 +353,9 @@ mod tests {
         let r = capture_from_raw(&info(), 0, &[128; 24], &s, &dir).unwrap();
         assert!(r.file_name.ends_with(".png"));
         let bytes = std::fs::read(&r.path).unwrap();
-        let mut rd = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap();
+        let mut rd = png::Decoder::new(std::io::Cursor::new(bytes))
+            .read_info()
+            .unwrap();
         assert!(rd.info().icc_profile.is_some(), "profil sRGB intégré");
         let mut buf = vec![0; rd.output_buffer_size().unwrap()];
         rd.next_frame(&mut buf).unwrap();
@@ -290,14 +380,35 @@ mod tests {
         let s = Settings::default();
         let a = capture_from_raw_shot(&info(), 50, Some(2), &[0; 24], &s, &dir).unwrap();
         let b = capture_from_raw_shot(&info(), 10, Some(1), &[0; 24], &s, &dir).unwrap();
-        let row = |c: CaptureResult, span, clip: Option<&str>| CsvRow { capture: Some(c), span: Some(span), clip: clip.map(Into::into), palette: None };
-        let csv = export_csv(&info(), &[row(a.clone(), (40, 75), Some("=B.mov")), row(b, (0, 40), None)]);
+        let row = |c: CaptureResult, span, clip: Option<&str>| CsvRow {
+            capture: Some(c),
+            span: Some(span),
+            clip: clip.map(Into::into),
+            palette: None,
+        };
+        let csv = export_csv(
+            &info(),
+            &[
+                row(a.clone(), (40, 75), Some("=B.mov")),
+                row(b, (0, 40), None),
+            ],
+        );
         let lines: Vec<&str> = csv.split("\r\n").collect();
         assert!(lines[0].starts_with('\u{FEFF}'));
         assert!(!lines[0].contains("palette"));
-        assert_eq!(lines[1], "\"Film;_v2_P0001_00-00-00-10.jpg\";10;00:00:00:10;1;;00:00:00:00;00:00:01:14;40");
+        assert_eq!(
+            lines[1],
+            "\"Film;_v2_P0001_00-00-00-10.jpg\";10;00:00:00:10;1;;00:00:00:00;00:00:01:14;40"
+        );
         assert_eq!(lines[2], "\"Film;_v2_P0002_00-00-02-00.jpg\";50;00:00:02:00;2;'=B.mov;00:00:01:15;00:00:02:24;35");
-        let with = export_csv(&info(), &[CsvRow { capture: Some(a), palette: Some(vec!["#000000".into(), "#FFFFFF".into()]), ..Default::default() }]);
+        let with = export_csv(
+            &info(),
+            &[CsvRow {
+                capture: Some(a),
+                palette: Some(vec!["#000000".into(), "#FFFFFF".into()]),
+                ..Default::default()
+            }],
+        );
         assert!(with.lines().next().unwrap().ends_with(";palette"));
         assert!(with.lines().nth(1).unwrap().ends_with(";#000000 #FFFFFF"));
         assert_eq!(csv_field("=HYPERLINK(1)"), "'=HYPERLINK(1)");

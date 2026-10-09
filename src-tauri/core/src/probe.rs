@@ -80,7 +80,10 @@ impl VideoInfo {
     pub fn with_tc_mode(mut self, mode: TimecodeMode) -> Self {
         self.timecode = match mode {
             TimecodeMode::File => self.file_timecode,
-            TimecodeMode::Zero => Timecode { start: 0, ..self.file_timecode },
+            TimecodeMode::Zero => Timecode {
+                start: 0,
+                ..self.file_timecode
+            },
         };
         self
     }
@@ -152,7 +155,11 @@ fn as_str(v: &Value) -> String {
 }
 
 fn gcd(a: u64, b: u64) -> u64 {
-    if b == 0 { a } else { gcd(b, a % b) }
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
 }
 
 fn even(x: f64) -> u32 {
@@ -168,7 +175,10 @@ fn even(x: f64) -> u32 {
 pub fn nvdec_ampere_compatible(codec: &str, pix_fmt: &str) -> bool {
     match codec {
         "h264" => matches!(pix_fmt, "yuv420p" | "yuvj420p" | "nv12"),
-        "hevc" => matches!(pix_fmt, "yuv420p" | "yuvj420p" | "nv12" | "yuv420p10le" | "p010le"),
+        "hevc" => matches!(
+            pix_fmt,
+            "yuv420p" | "yuvj420p" | "nv12" | "yuv420p10le" | "p010le"
+        ),
         _ => false,
     }
 }
@@ -186,7 +196,11 @@ pub fn output_size(width: u32, height: u32, sar: (u32, u32), rotation: u32) -> (
     } else {
         (even(width as f64 * sar.0 as f64 / sar.1 as f64), height)
     };
-    if rotation == 90 || rotation == 270 { (h, w) } else { (w, h) }
+    if rotation == 90 || rotation == 270 {
+        (h, w)
+    } else {
+        (w, h)
+    }
 }
 
 fn is_video(s: &Value) -> bool {
@@ -201,12 +215,23 @@ fn is_video(s: &Value) -> bool {
 /// Timecode : celui du flux vidéo, sinon d'une piste de données (tmcd),
 /// sinon du conteneur.
 fn timecode_tag(root: &Value, video: &Value) -> Option<String> {
-    let tag = |v: &Value| v.get("tags").and_then(|t| t.get("timecode")).and_then(|t| t.as_str()).map(str::to_string);
+    let tag = |v: &Value| {
+        v.get("tags")
+            .and_then(|t| t.get("timecode"))
+            .and_then(|t| t.as_str())
+            .map(str::to_string)
+    };
     tag(video)
         .or_else(|| {
             root.get("streams")
                 .and_then(|s| s.as_array())
-                .and_then(|a| a.iter().find_map(|s| (s.get("codec_type").and_then(|t| t.as_str()) == Some("data")).then(|| tag(s)).flatten()))
+                .and_then(|a| {
+                    a.iter().find_map(|s| {
+                        (s.get("codec_type").and_then(|t| t.as_str()) == Some("data"))
+                            .then(|| tag(s))
+                            .flatten()
+                    })
+                })
         })
         .or_else(|| root.get("format").and_then(tag))
 }
@@ -239,7 +264,11 @@ pub fn parse_probe(json: &str, path: &str) -> Result<VideoInfo, String> {
     let duration = stream
         .get("duration")
         .and_then(as_f64)
-        .or_else(|| root.get("format").and_then(|f| f.get("duration")).and_then(as_f64))
+        .or_else(|| {
+            root.get("format")
+                .and_then(|f| f.get("duration"))
+                .and_then(as_f64)
+        })
         .unwrap_or(0.0);
 
     let frame_count = stream
@@ -293,7 +322,11 @@ pub fn parse_probe(json: &str, path: &str) -> Result<VideoInfo, String> {
         "smpte170m" | "bt470bg" => "bt601",
         "bt2020nc" | "bt2020c" => "bt2020",
         _ => {
-            let guess = if height.max(width) >= 1280 || height >= 720 { "bt709" } else { "bt601" };
+            let guess = if height.max(width) >= 1280 || height >= 720 {
+                "bt709"
+            } else {
+                "bt601"
+            };
             warnings.push(format!(
                 "Color matrix not tagged in the file: assuming {}.",
                 guess.to_uppercase().replace("BT", "BT.")
@@ -335,10 +368,7 @@ pub fn parse_probe(json: &str, path: &str) -> Result<VideoInfo, String> {
         let a = a.0 as f64 / a.1 as f64;
         let r = r.0 as f64 / r.1 as f64;
         if (a - r).abs() / r > 0.001 {
-            warnings.push(
-                "Frame rate may be variable: frame accuracy is not guaranteed."
-                    .into(),
-            );
+            warnings.push("Frame rate may be variable: frame accuracy is not guaranteed.".into());
         }
     }
 
@@ -346,7 +376,9 @@ pub fn parse_probe(json: &str, path: &str) -> Result<VideoInfo, String> {
     let file_timecode = Timecode::from_tag(tag.as_deref(), fps);
     if let Some(t) = tag.as_deref() {
         if file_timecode.start == 0 && !t.trim_start_matches(['0', ':', ';', '.']).is_empty() {
-            warnings.push(format!("Unreadable timecode \"{t}\" in the file: counting from 00:00:00:00."));
+            warnings.push(format!(
+                "Unreadable timecode \"{t}\" in the file: counting from 00:00:00:00."
+            ));
         }
     }
 
@@ -428,7 +460,9 @@ pub(crate) mod tests {
 
     #[test]
     fn anamorphose_remise_au_format_d_affichage() {
-        let json = SAMPLE.replace("\"width\": 1920", "\"width\": 1440").replace("\"1:1\"", "\"4:3\"");
+        let json = SAMPLE
+            .replace("\"width\": 1920", "\"width\": 1440")
+            .replace("\"1:1\"", "\"4:3\"");
         let i = parse_probe(&json, "hdv.mov").unwrap();
         assert_eq!((i.sar_num, i.sar_den), (4, 3));
         assert_eq!((i.out_width, i.out_height), (1920, 1080));
@@ -457,23 +491,34 @@ pub(crate) mod tests {
 
     #[test]
     fn timecode_de_depart_et_drop_frame() {
-        let json = SAMPLE.replace(r#""sample_aspect_ratio": "1:1","#, r#""sample_aspect_ratio": "1:1", "tags": {"timecode": "01:00:00:00"},"#);
+        let json = SAMPLE.replace(
+            r#""sample_aspect_ratio": "1:1","#,
+            r#""sample_aspect_ratio": "1:1", "tags": {"timecode": "01:00:00:00"},"#,
+        );
         let i = parse_probe(&json, "master.mov").unwrap();
         assert_eq!(i.tc(0), "01:00:00:00");
         assert_eq!(i.tc(24), "01:00:01:00");
-        assert_eq!(i.clone().with_tc_mode(TimecodeMode::Zero).tc(24), "00:00:01:00");
-        assert_eq!(i.with_tc_mode(TimecodeMode::Zero).file_timecode.start_label(), "01:00:00:00");
+        assert_eq!(
+            i.clone().with_tc_mode(TimecodeMode::Zero).tc(24),
+            "00:00:01:00"
+        );
+        assert_eq!(
+            i.with_tc_mode(TimecodeMode::Zero)
+                .file_timecode
+                .start_label(),
+            "01:00:00:00"
+        );
 
         // Timecode porté par une piste de données (tmcd), en drop-frame.
-        let json = SAMPLE.replace("24000/1001", "30000/1001").replace(
-            r#""format": {"#,
-            r#""format": {"tags": {}, "#,
-        ).replace(
-            r#"}],
+        let json = SAMPLE
+            .replace("24000/1001", "30000/1001")
+            .replace(r#""format": {"#, r#""format": {"tags": {}, "#)
+            .replace(
+                r#"}],
         "format""#,
-            r#"}, {"index": 1, "codec_type": "data", "tags": {"timecode": "00:59:59;28"}}],
+                r#"}, {"index": 1, "codec_type": "data", "tags": {"timecode": "00:59:59;28"}}],
         "format""#,
-        );
+            );
         let i = parse_probe(&json, "ntsc.mov").unwrap();
         assert!(i.timecode.drop);
         assert_eq!(i.tc(2), "01:00:00;00");
@@ -500,7 +545,10 @@ pub(crate) mod tests {
 
     #[test]
     fn previent_d_un_fichier_hdr() {
-        let json = SAMPLE.replace(r#""color_transfer": "bt709""#, r#""color_transfer": "smpte2084""#);
+        let json = SAMPLE.replace(
+            r#""color_transfer": "bt709""#,
+            r#""color_transfer": "smpte2084""#,
+        );
         let i = parse_probe(&json, "a.mp4").unwrap();
         assert!(i.warnings.iter().any(|w| w.contains("HDR")));
     }
@@ -510,25 +558,38 @@ pub(crate) mod tests {
         let json = SAMPLE.replace("yuv420p", "yuv420p10le");
         let i = parse_probe(&json, "a.mp4").unwrap();
         assert!(!i.nvdec_compatible);
-        assert!(i.warnings.iter().any(|w| w.contains(crate::analysis::GPU_DECODER)));
+        assert!(i
+            .warnings
+            .iter()
+            .any(|w| w.contains(crate::analysis::GPU_DECODER)));
     }
 
     #[test]
     fn calcule_le_nombre_d_images_sans_nb_frames() {
         let json = SAMPLE.replace(r#", "nb_frames": "161463""#, "");
         let i = parse_probe(&json, "a.mkv").unwrap();
-        assert_eq!(i.frame_count, (6734.333333_f64 * 24000.0 / 1001.0).round() as u64);
+        assert_eq!(
+            i.frame_count,
+            (6734.333333_f64 * 24000.0 / 1001.0).round() as u64
+        );
     }
 
     #[test]
     fn refuse_un_fichier_sans_video() {
-        let err = parse_probe(r#"{"streams": [{"codec_type": "audio"}], "format": {}}"#, "a.wav").unwrap_err();
+        let err = parse_probe(
+            r#"{"streams": [{"codec_type": "audio"}], "format": {}}"#,
+            "a.wav",
+        )
+        .unwrap_err();
         assert!(err.contains("No video stream"));
     }
 
     #[test]
     fn previent_d_une_frequence_variable() {
-        let json = SAMPLE.replace(r#""avg_frame_rate": "24000/1001""#, r#""avg_frame_rate": "2400/101""#);
+        let json = SAMPLE.replace(
+            r#""avg_frame_rate": "24000/1001""#,
+            r#""avg_frame_rate": "2400/101""#,
+        );
         let i = parse_probe(&json, "a.mp4").unwrap();
         assert!(i.warnings.iter().any(|w| w.contains("variable")));
     }

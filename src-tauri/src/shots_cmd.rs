@@ -32,7 +32,11 @@ pub struct AnalysisSummary {
 
 /// Passe d'analyse du film entier (GPU si possible). Progression sur `on_event`.
 #[tauri::command]
-pub async fn analyze(app: AppHandle, state: State<'_, AppState>, on_event: Channel<JobEvent>) -> Result<AnalysisSummary, String> {
+pub async fn analyze(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    on_event: Channel<JobEvent>,
+) -> Result<AnalysisSummary, String> {
     let info = state.video()?;
     let pref = state.settings()?.shots.decoder;
     let group = ProcessGroup::default();
@@ -44,7 +48,11 @@ pub async fn analyze(app: AppHandle, state: State<'_, AppState>, on_event: Chann
     }
     let t0 = std::time::Instant::now();
     let res = run_analysis(&app, &info, pref, &group, |done, total, d| {
-        let phase = if d == Decoder::Gpu { "analysis-gpu" } else { "analysis-cpu" };
+        let phase = if d == Decoder::Gpu {
+            "analysis-gpu"
+        } else {
+            "analysis-cpu"
+        };
         let _ = on_event.send(JobEvent::Progress { phase, done, total });
     })
     .await;
@@ -60,7 +68,11 @@ pub async fn analyze(app: AppHandle, state: State<'_, AppState>, on_event: Chann
     }
     let id = state.new_id();
     let sum = summary(id, &data, note, t0.elapsed().as_secs_f64());
-    let stored = Arc::new(StoredAnalysis { id, path: info.path, data });
+    let stored = Arc::new(StoredAnalysis {
+        id,
+        path: info.path,
+        data,
+    });
     *lock(&state.analysis)? = Some(stored.clone());
     crate::project_cmd::save_analysis(&state, stored);
     Ok(sum)
@@ -141,14 +153,21 @@ pub fn list_shots(
     Ok(list
         .into_iter()
         .map(|s| {
-            let target = pick_in_span(s.start, s.end, pick).first().copied().unwrap_or(s.start);
+            let target = pick_in_span(s.start, s.end, pick)
+                .first()
+                .copied()
+                .unwrap_or(s.start);
             ShotView {
                 index: s.index,
                 start: s.start,
                 end: s.end,
                 score: s.score,
-                thumb: analysis.as_ref().and_then(|a| a.data.nearest_thumb(target, s.start, s.end)),
-                clip: imported.as_ref().and_then(|c| c.name_at(s.start).map(str::to_string)),
+                thumb: analysis
+                    .as_ref()
+                    .and_then(|a| a.data.nearest_thumb(target, s.start, s.end)),
+                clip: imported
+                    .as_ref()
+                    .and_then(|c| c.name_at(s.start).map(str::to_string)),
             }
         })
         .collect())
@@ -156,7 +175,10 @@ pub fn list_shots(
 
 /// Ouvre une liste de montage (EDL, OTIO, XML, FCPXML) et la cale sur le film.
 #[tauri::command]
-pub async fn import_cuts(app: AppHandle, state: State<'_, AppState>) -> Result<Option<ImportedCuts>, String> {
+pub async fn import_cuts(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<ImportedCuts>, String> {
     let info = state.video()?;
     let a = app.clone();
     let picked = tauri::async_runtime::spawn_blocking(move || {
@@ -172,7 +194,9 @@ pub async fn import_cuts(app: AppHandle, state: State<'_, AppState>) -> Result<O
     })
     .await
     .map_err(|e| e.to_string())?;
-    let Some(path) = picked.and_then(|f| f.into_path().ok()) else { return Ok(None) };
+    let Some(path) = picked.and_then(|f| f.into_path().ok()) else {
+        return Ok(None);
+    };
     let imported = tauri::async_runtime::spawn_blocking(move || read_edit_list(&path, &info))
         .await
         .map_err(|e| e.to_string())??;
@@ -184,15 +208,22 @@ pub async fn import_cuts(app: AppHandle, state: State<'_, AppState>) -> Result<O
     Ok(Some(imported.0))
 }
 
-fn read_edit_list(path: &std::path::Path, info: &photogramme_core::VideoInfo) -> Result<(ImportedCuts, String), String> {
+fn read_edit_list(
+    path: &std::path::Path,
+    info: &photogramme_core::VideoInfo,
+) -> Result<(ImportedCuts, String), String> {
     let meta = std::fs::metadata(path).map_err(|e| format!("Cannot read the file: {e}"))?;
     if meta.len() > cuts::MAX_FILE_BYTES {
         return Err("This edit list is too large (20 MB maximum).".into());
     }
     let bytes = std::fs::read(path).map_err(|e| format!("Cannot read the file: {e}"))?;
     // Les EDL de certains logiciels sont en Latin-1 : on ne bloque pas sur l'encodage.
-    let text = String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes)).to_string();
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    let text =
+        String::from_utf8_lossy(bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes)).to_string();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
     let list = cuts::parse_edit_list(&name, &text)?;
     Ok((cuts::map_to_film(list, info, &name)?, info.path.clone()))
 }
@@ -208,7 +239,10 @@ pub fn clear_cuts(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Réponse du protocole `thumb://` : /{id d'analyse}-{image} (vignette exacte)
 /// ou /{id d'analyse}-n{image} (vignette la plus proche, pour la bande d'images).
-pub fn thumb_response(analysis: Option<Arc<StoredAnalysis>>, path: &str) -> tauri::http::Response<Vec<u8>> {
+pub fn thumb_response(
+    analysis: Option<Arc<StoredAnalysis>>,
+    path: &str,
+) -> tauri::http::Response<Vec<u8>> {
     let parts: Vec<&str> = path.trim_matches('/').split('-').collect();
     let (id, frame, near) = match parts.as_slice() {
         [a, b] => match b.strip_prefix('n') {
@@ -219,7 +253,11 @@ pub fn thumb_response(analysis: Option<Arc<StoredAnalysis>>, path: &str) -> taur
     };
     let found = match (analysis, id, frame) {
         (Some(a), Some(id), Some(f)) if a.id == id => {
-            let key = if near { a.data.nearest_thumb(f, f, f.saturating_add(1)) } else { Some(f) };
+            let key = if near {
+                a.data.nearest_thumb(f, f, f.saturating_add(1))
+            } else {
+                Some(f)
+            };
             key.and_then(|k| a.data.thumbs.get(&k).cloned())
         }
         _ => None,
@@ -237,8 +275,20 @@ pub fn thumb_response(analysis: Option<Arc<StoredAnalysis>>, path: &str) -> taur
     .unwrap_or_else(|_| tauri::http::Response::new(Vec::new()))
 }
 
-fn render_barcode(a: &Analysis, w: u32, h: u32, mode: barcode::BarcodeMode) -> Result<Vec<u8>, String> {
-    let rgb = barcode::render(&a.columns, a.geometry.thumb_h as usize, a.frames, w, h, mode)?;
+fn render_barcode(
+    a: &Analysis,
+    w: u32,
+    h: u32,
+    mode: barcode::BarcodeMode,
+) -> Result<Vec<u8>, String> {
+    let rgb = barcode::render(
+        &a.columns,
+        a.geometry.thumb_h as usize,
+        a.frames,
+        w,
+        h,
+        mode,
+    )?;
     encode_rgb(&rgb, w, h, 92, Chroma::C444, false)
 }
 
@@ -264,14 +314,21 @@ pub async fn export_barcode(state: State<'_, AppState>) -> Result<CaptureResult,
     let a = state.analysis()?;
     let info = state.video()?;
     let s = state.settings()?;
-    let dir = PathBuf::from(s.output_dir.clone().ok_or("Choose an output folder first.")?);
+    let dir = PathBuf::from(
+        s.output_dir
+            .clone()
+            .ok_or("Choose an output folder first.")?,
+    );
     tauri::async_runtime::spawn_blocking(move || {
         let b = &s.barcode;
         let jpg = render_barcode(&a.data, b.width, b.height, b.mode)?;
         let path = unique_path(&dir, &format!("{}_barcode.jpg", film_stem(&info.file_name)));
         photogramme_core::capture::write_new_file(&path, &jpg)?;
         Ok(CaptureResult {
-            file_name: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+            file_name: path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
             path: path.to_string_lossy().to_string(),
             frame: 0,
             timecode: info.tc(0),

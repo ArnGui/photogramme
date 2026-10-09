@@ -35,11 +35,19 @@ impl ColorProfile {
 }
 
 fn srgb_oetf(l: f64) -> f64 {
-    if l <= 0.003_130_8 { 12.92 * l } else { 1.055 * l.powf(1.0 / 2.4) - 0.055 }
+    if l <= 0.003_130_8 {
+        12.92 * l
+    } else {
+        1.055 * l.powf(1.0 / 2.4) - 0.055
+    }
 }
 
 fn srgb_eotf(v: f64) -> f64 {
-    if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    if v <= 0.040_45 {
+        v / 12.92
+    } else {
+        ((v + 0.055) / 1.055).powf(2.4)
+    }
 }
 
 /// Table de conversion 8 bits : code BT.1886 (γ2,4) → code sRGB, même luminance.
@@ -81,7 +89,10 @@ pub fn convert_rgb(rgb: [u8; 3], profile: ColorProfile) -> [u8; 3] {
 pub fn icc_profile(profile: ColorProfile) -> Option<Vec<u8>> {
     match profile {
         ColorProfile::Untagged => None,
-        ColorProfile::Rec709 => Some(build_icc("Rec.709 BT.1886 (gamma 2.4) - Photogramme", Trc::Gamma(2.4))),
+        ColorProfile::Rec709 => Some(build_icc(
+            "Rec.709 BT.1886 (gamma 2.4) - Photogramme",
+            Trc::Gamma(2.4),
+        )),
         ColorProfile::Srgb => Some(build_icc("sRGB IEC61966-2.1 - Photogramme", Trc::Srgb)),
     }
 }
@@ -124,7 +135,10 @@ fn curv_tag(trc: &Trc) -> Vec<u8> {
 }
 
 fn desc_tag(text: &str) -> Vec<u8> {
-    let ascii: Vec<u8> = text.bytes().filter(|b| b.is_ascii() && *b >= 0x20).collect();
+    let ascii: Vec<u8> = text
+        .bytes()
+        .filter(|b| b.is_ascii() && *b >= 0x20)
+        .collect();
     let mut t = b"desc\0\0\0\0".to_vec();
     t.extend(((ascii.len() + 1) as u32).to_be_bytes());
     t.extend(&ascii);

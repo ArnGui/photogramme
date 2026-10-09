@@ -4,10 +4,15 @@
 
 use crate::runner::{failure_message, spawn_frames, FrameMsg, ProcessGroup, CANCELLED};
 use photogramme_core::analysis::{Analysis, Analyzer, Decoder};
-use photogramme_core::batch::{frame_len, group_args, group_frames, DecodeGroup, OutSize, PixelFormat};
+use photogramme_core::batch::{
+    frame_len, group_args, group_frames, DecodeGroup, OutSize, PixelFormat,
+};
 use photogramme_core::color::convert_in_place;
 use photogramme_core::settings::DecoderPref;
-use photogramme_core::{analysis_args, capture_converted, dominant_colors, BatchItem, CaptureResult, Settings, VideoInfo};
+use photogramme_core::{
+    analysis_args, capture_converted, dominant_colors, BatchItem, CaptureResult, Settings,
+    VideoInfo,
+};
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -31,12 +36,15 @@ pub const FRAME_QUEUE: usize = 3;
 pub fn tool<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<Command, String> {
     #[cfg(test)]
     {
-        let exe = std::env::var(format!("PHOTOGRAMME_{}", name.to_uppercase())).unwrap_or_else(|_| name.to_string());
+        let exe = std::env::var(format!("PHOTOGRAMME_{}", name.to_uppercase()))
+            .unwrap_or_else(|_| name.to_string());
         Ok(app.shell().command(exe))
     }
     #[cfg(not(test))]
     {
-        app.shell().sidecar(name).map_err(|e| format!("{name} not found in the app: {e}"))
+        app.shell()
+            .sidecar(name)
+            .map_err(|e| format!("{name} not found in the app: {e}"))
     }
 }
 
@@ -44,11 +52,24 @@ pub fn tool<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<Command, Strin
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum JobEvent {
-    Progress { phase: &'static str, done: u64, total: u64 },
-    Written { capture: CaptureResult },
+    Progress {
+        phase: &'static str,
+        done: u64,
+        total: u64,
+    },
+    Written {
+        capture: CaptureResult,
+    },
     /// `file` : planche contact (PDF ou première page).
-    Done { written: usize, dir: String, csv: Option<String>, file: Option<String> },
-    Failed { message: String },
+    Done {
+        written: usize,
+        dir: String,
+        csv: Option<String>,
+        file: Option<String>,
+    },
+    Failed {
+        message: String,
+    },
     Cancelled,
 }
 
@@ -96,7 +117,10 @@ async fn analysis_pass<R: Runtime>(
     group: &ProcessGroup,
     progress: &mut impl FnMut(u64, u64, Decoder),
 ) -> Result<Analysis, String> {
-    let (mut rx, pid) = group.spawn(tool(app, "ffmpeg")?.args(analysis_args(info, decoder)), "ffmpeg")?;
+    let (mut rx, pid) = group.spawn(
+        tool(app, "ffmpeg")?.args(analysis_args(info, decoder)),
+        "ffmpeg",
+    )?;
     let mut an = Analyzer::new(info, decoder);
     let (mut code, mut err) = (None, None);
     let mut th = Throttle::new();
@@ -160,7 +184,9 @@ pub async fn run_analysis<R: Runtime>(
                         (true, Some(i)) => first[i + 2..].to_string(),
                         _ => first,
                     };
-                    note = Some(format!("GPU decoding failed ({first}). Analysis ran on the CPU."));
+                    note = Some(format!(
+                        "GPU decoding failed ({first}). Analysis ran on the CPU."
+                    ));
                 }
                 last_err = e;
             }
@@ -203,8 +229,13 @@ async fn decode_group<R: Runtime>(
     while let Some(msg) = rx.recv().await {
         match msg {
             FrameMsg::Frame(pixels) => {
-                let (Some(frame), false) = (frames.next(), receiver_gone) else { continue };
-                let item = BatchItem { frame, shot: shots.get(&frame).copied().flatten() };
+                let (Some(frame), false) = (frames.next(), receiver_gone) else {
+                    continue;
+                };
+                let item = BatchItem {
+                    frame,
+                    shot: shots.get(&frame).copied().flatten(),
+                };
                 if tx.send(RawFrame { item, pixels }).await.is_err() {
                     // Plus personne n'attend ces images : on arrête FFmpeg.
                     receiver_gone = true;
@@ -213,7 +244,11 @@ async fn decode_group<R: Runtime>(
                     sent += 1;
                 }
             }
-            FrameMsg::Done { code, stderr, leftover } => end = Some((code, stderr, leftover)),
+            FrameMsg::Done {
+                code,
+                stderr,
+                leftover,
+            } => end = Some((code, stderr, leftover)),
         }
     }
     group.forget(pid);
@@ -246,21 +281,34 @@ pub async fn produce<R: Runtime>(
     size: OutSize,
     tx: Sender<RawFrame>,
 ) -> Result<(), String> {
-    let shots: Arc<HashMap<u64, Option<u32>>> = Arc::new(items.iter().map(|i| (i.frame, i.shot)).collect());
+    let shots: Arc<HashMap<u64, Option<u32>>> =
+        Arc::new(items.iter().map(|i| (i.frame, i.shot)).collect());
     let frames: Vec<u64> = items.iter().map(|i| i.frame).collect();
-    let queue = Arc::new(Mutex::new(group_frames(&frames, info.fps).into_iter().collect::<VecDeque<_>>()));
+    let queue = Arc::new(Mutex::new(
+        group_frames(&frames, info.fps)
+            .into_iter()
+            .collect::<VecDeque<_>>(),
+    ));
     let first_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let info = Arc::new(info);
 
     let mut handles = Vec::new();
     for _ in 0..DECODE_WORKERS {
-        let (app, group, info, shots, tx, queue, first_error) =
-            (app.clone(), group.clone(), info.clone(), shots.clone(), tx.clone(), queue.clone(), first_error.clone());
+        let (app, group, info, shots, tx, queue, first_error) = (
+            app.clone(),
+            group.clone(),
+            info.clone(),
+            shots.clone(),
+            tx.clone(),
+            queue.clone(),
+            first_error.clone(),
+        );
         handles.push(tauri::async_runtime::spawn(async move {
             loop {
                 let next = queue.lock().ok().and_then(|mut q| q.pop_front());
                 let Some(g) = next else { break };
-                if let Err(e) = decode_group(&app, &group, &info, &g, fmt, size, &shots, &tx).await {
+                if let Err(e) = decode_group(&app, &group, &info, &g, fmt, size, &shots, &tx).await
+                {
                     if let Ok(mut fe) = first_error.lock() {
                         if fe.is_none() && e != CANCELLED {
                             *fe = Some(e);
@@ -349,7 +397,8 @@ pub async fn run_batch_direct<R: Runtime>(
                     .map(|s| s.hex)
                     .collect::<Vec<_>>()
             });
-            let capture = capture_converted(&info, f.item.frame, f.item.shot, &px, &settings, &dir)?;
+            let capture =
+                capture_converted(&info, f.item.frame, f.item.shot, &px, &settings, &dir)?;
             Ok(Written { capture, palette })
         }));
         while inflight.len() >= ENCODE_WORKERS {
@@ -361,7 +410,9 @@ pub async fn run_batch_direct<R: Runtime>(
         let r = h.await;
         settle(r, &mut written, &mut write_err);
     }
-    let produced = producer.await.map_err(|e| format!("Decoding task interrupted: {e}"))?;
+    let produced = producer
+        .await
+        .map_err(|e| format!("Decoding task interrupted: {e}"))?;
     if let Some(e) = write_err {
         return Err(e);
     }

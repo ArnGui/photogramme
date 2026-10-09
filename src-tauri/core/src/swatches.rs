@@ -61,20 +61,38 @@ pub fn ase(swatches: &[Swatch], palette_name: &str) -> Vec<u8> {
 fn css_ident(name: &str) -> String {
     let mut s: String = name
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect();
     while s.contains("--") {
         s = s.replace("--", "-");
     }
     let s = s.trim_matches('-').to_string();
-    if s.is_empty() || s.starts_with(|c: char| c.is_ascii_digit()) { format!("p-{s}") } else { s }
+    if s.is_empty() || s.starts_with(|c: char| c.is_ascii_digit()) {
+        format!("p-{s}")
+    } else {
+        s
+    }
 }
 
 pub fn css(swatches: &[Swatch], palette_name: &str) -> String {
     let id = css_ident(palette_name);
-    let mut s = format!("/* {} : palette Photogramme */\n:root {{\n", palette_name.replace("*/", ""));
+    let mut s = format!(
+        "/* {} : palette Photogramme */\n:root {{\n",
+        palette_name.replace("*/", "")
+    );
     for (i, sw) in swatches.iter().enumerate() {
-        s.push_str(&format!("  --{id}-{:02}: {}; /* {:.0} % */\n", i + 1, sw.hex.to_lowercase(), sw.share * 100.0));
+        s.push_str(&format!(
+            "  --{id}-{:02}: {}; /* {:.0} % */\n",
+            i + 1,
+            sw.hex.to_lowercase(),
+            sw.share * 100.0
+        ));
     }
     s.push_str("}\n");
     s
@@ -82,9 +100,18 @@ pub fn css(swatches: &[Swatch], palette_name: &str) -> String {
 
 pub fn gpl(swatches: &[Swatch], palette_name: &str) -> String {
     let name: String = palette_name.chars().filter(|c| !c.is_control()).collect();
-    let mut s = format!("GIMP Palette\nName: {name}\nColumns: {}\n#\n", swatches.len().max(1));
+    let mut s = format!(
+        "GIMP Palette\nName: {name}\nColumns: {}\n#\n",
+        swatches.len().max(1)
+    );
     for (i, sw) in swatches.iter().enumerate() {
-        s.push_str(&format!("{:3} {:3} {:3}\t{}\n", sw.rgb[0], sw.rgb[1], sw.rgb[2], swatch_name(i, sw)));
+        s.push_str(&format!(
+            "{:3} {:3} {:3}\t{}\n",
+            sw.rgb[0],
+            sw.rgb[1],
+            sw.rgb[2],
+            swatch_name(i, sw)
+        ));
     }
     s
 }
@@ -109,15 +136,27 @@ mod tests {
     use super::*;
 
     fn sw(hex: &str, rgb: [u8; 3], share: f32) -> Swatch {
-        Swatch { hex: hex.into(), rgb, share, lab: [50.0, 10.0, -5.0] }
+        Swatch {
+            hex: hex.into(),
+            rgb,
+            share,
+            lab: [50.0, 10.0, -5.0],
+        }
     }
 
     #[test]
     fn ase_bien_forme() {
-        let p = vec![sw("#C81E1E", [200, 30, 30], 0.5), sw("#143CC8", [20, 60, 200], 0.5)];
+        let p = vec![
+            sw("#C81E1E", [200, 30, 30], 0.5),
+            sw("#143CC8", [20, 60, 200], 0.5),
+        ];
         let a = ase(&p, "Film");
         assert_eq!(&a[0..4], b"ASEF");
-        assert_eq!(u32::from_be_bytes(a[8..12].try_into().unwrap()), 4, "groupe + 2 couleurs + fin");
+        assert_eq!(
+            u32::from_be_bytes(a[8..12].try_into().unwrap()),
+            4,
+            "groupe + 2 couleurs + fin"
+        );
         // Parcours des blocs : chaque longueur doit tomber juste.
         let mut i = 12;
         let mut kinds = Vec::new();
@@ -139,9 +178,14 @@ mod tests {
         let p = vec![sw("#C81E1E", [200, 30, 30], 0.75)];
         let c = css(&p, "Le Film (v2) */");
         assert!(c.contains("--le-film-v2-01: #c81e1e;"), "{c}");
-        assert_eq!(c.lines().next().unwrap().matches("*/").count(), 1, "le nom ne ferme jamais le commentaire");
+        assert_eq!(
+            c.lines().next().unwrap().matches("*/").count(),
+            1,
+            "le nom ne ferme jamais le commentaire"
+        );
         assert!(gpl(&p, "Film").contains("200  30  30\t01 #C81E1E"));
-        let j: serde_json::Value = serde_json::from_str(&json_doc(&p, "Film", "01:00:00:00", 12)).unwrap();
+        let j: serde_json::Value =
+            serde_json::from_str(&json_doc(&p, "Film", "01:00:00:00", 12)).unwrap();
         assert_eq!(j["colors"][0]["hex"], "#C81E1E");
         assert_eq!(css_ident("2049"), "p-2049");
     }

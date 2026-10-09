@@ -55,7 +55,11 @@ pub enum GpuApi {
 
 impl GpuApi {
     /// Celle de la plateforme compilée.
-    pub const CURRENT: GpuApi = if cfg!(target_os = "macos") { GpuApi::VideoToolbox } else { GpuApi::Cuda };
+    pub const CURRENT: GpuApi = if cfg!(target_os = "macos") {
+        GpuApi::VideoToolbox
+    } else {
+        GpuApi::Cuda
+    };
 
     /// Nom affiché dans les messages.
     pub const fn name(self) -> &'static str {
@@ -121,7 +125,11 @@ fn tail_filters(info: &VideoInfo, g: &Geometry) -> String {
 
 /// Dimensions dans l'orientation du flux (avant rotation).
 fn stream_dims(info: &VideoInfo, w: u32, h: u32) -> (u32, u32) {
-    if info.quarter_turn() { (h, w) } else { (w, h) }
+    if info.quarter_turn() {
+        (h, w)
+    } else {
+        (w, h)
+    }
 }
 
 /// Arguments FFmpeg de la passe d'analyse, pour le GPU de cette plateforme.
@@ -133,16 +141,26 @@ pub fn analysis_args(info: &VideoInfo, decoder: Decoder) -> Vec<String> {
 pub fn analysis_args_for(info: &VideoInfo, decoder: Decoder, api: GpuApi) -> Vec<String> {
     let g = geometry(info);
     let (aw, ah) = stream_dims(info, g.analysis_w, g.analysis_h);
-    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-nostats", "-noautorotate"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
+    let mut a: Vec<String> = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-nostats",
+        "-noautorotate",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
     let vf = match (decoder, api) {
         (Decoder::Gpu, GpuApi::VideoToolbox) => {
             // Sans format de sortie matériel, FFmpeg rapatrie chaque image
             // décodée (nv12, p010 en 10 bits) : la suite est celle du processeur.
             a.extend(["-hwaccel", "videotoolbox"].iter().map(|s| s.to_string()));
-            format!("scale=w={aw}:h={ah}:flags=bilinear,{}", tail_filters(info, &g))
+            format!(
+                "scale=w={aw}:h={ah}:flags=bilinear,{}",
+                tail_filters(info, &g)
+            )
         }
         (Decoder::Gpu, GpuApi::Cuda) => {
             // Les images restent en mémoire GPU jusqu'au `hwdownload`.
@@ -151,23 +169,38 @@ pub fn analysis_args_for(info: &VideoInfo, decoder: Decoder, api: GpuApi) -> Vec
                     .iter()
                     .map(|s| s.to_string()),
             );
-            format!("scale_cuda=w={aw}:h={ah},hwdownload,format=nv12,{}", tail_filters(info, &g))
+            format!(
+                "scale_cuda=w={aw}:h={ah},hwdownload,format=nv12,{}",
+                tail_filters(info, &g)
+            )
         }
-        (Decoder::Cpu, _) => format!("scale=w={aw}:h={ah}:flags=bilinear,{}", tail_filters(info, &g)),
+        (Decoder::Cpu, _) => format!(
+            "scale=w={aw}:h={ah}:flags=bilinear,{}",
+            tail_filters(info, &g)
+        ),
     };
     a.extend(["-i".into(), info.path.clone()]);
     a.extend(
         [
-            "-map", "0:v:0", "-an", "-sn", "-dn",
+            "-map",
+            "0:v:0",
+            "-an",
+            "-sn",
+            "-dn",
             // Une image décodée = une image en sortie, jamais de doublon ni de saut.
-            "-fps_mode", "passthrough",
+            "-fps_mode",
+            "passthrough",
             "-vf",
         ]
         .iter()
         .map(|s| s.to_string()),
     );
     a.push(vf);
-    a.extend(["-f", "rawvideo", "-pix_fmt", "rgb24", "-"].iter().map(|s| s.to_string()));
+    a.extend(
+        ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+            .iter()
+            .map(|s| s.to_string()),
+    );
     a
 }
 
@@ -176,9 +209,21 @@ pub fn looks_like_gpu_failure(stderr: &str) -> bool {
     let s = stderr.to_lowercase();
     // « device » seul serait trop large (« No space left on device ») : on
     // garde les formulations des erreurs d'initialisation du GPU.
-    ["cuda", "nvdec", "cuvid", "videotoolbox", "hwaccel", "hwdownload", "scale_cuda", "nvcuda", "device creation", "no device", "device type"]
-        .iter()
-        .any(|k| s.contains(k))
+    [
+        "cuda",
+        "nvdec",
+        "cuvid",
+        "videotoolbox",
+        "hwaccel",
+        "hwdownload",
+        "scale_cuda",
+        "nvcuda",
+        "device creation",
+        "no device",
+        "device type",
+    ]
+    .iter()
+    .any(|k| s.contains(k))
 }
 
 /// Résultat de l'analyse, conservé en mémoire tant que le film est ouvert.
@@ -220,7 +265,9 @@ impl Analysis {
     }
 
     pub fn memory_bytes(&self) -> usize {
-        self.scores.len() * 4 + self.columns.len() + self.thumbs.values().map(Vec::len).sum::<usize>()
+        self.scores.len() * 4
+            + self.columns.len()
+            + self.thumbs.values().map(Vec::len).sum::<usize>()
     }
 }
 
@@ -345,7 +392,11 @@ impl Analyzer {
             self.scores.resize(i + 1, 0.0);
             self.known.resize(i + 1, false);
         }
-        self.scores[i] = if score.is_finite() { score.clamp(0.0, 100.0) } else { 0.0 };
+        self.scores[i] = if score.is_finite() {
+            score.clamp(0.0, 100.0)
+        } else {
+            0.0
+        };
         self.known[i] = true;
         if let Some(rgb) = self.waiting.remove(&frame) {
             if self.scores[i] >= THRESHOLD_FLOOR {
@@ -389,7 +440,8 @@ impl Analyzer {
                 s[2] += px[2] as u32;
             }
             let half = w as u32 / 2;
-            self.columns.extend(s.map(|c| ((c + half) / w as u32) as u8));
+            self.columns
+                .extend(s.map(|c| ((c + half) / w as u32) as u8));
         }
     }
 
@@ -397,7 +449,14 @@ impl Analyzer {
         if self.thumbs.contains_key(&frame) {
             return;
         }
-        if let Ok(jpg) = encode_rgb(rgb, self.geometry.thumb_w, self.geometry.thumb_h, 80, Chroma::C420, false) {
+        if let Ok(jpg) = encode_rgb(
+            rgb,
+            self.geometry.thumb_w,
+            self.geometry.thumb_h,
+            80,
+            Chroma::C420,
+            false,
+        ) {
             self.thumbs.insert(frame, jpg);
         }
     }
@@ -447,7 +506,10 @@ mod tests {
     #[test]
     fn geometrie_paire_et_proportionnelle() {
         let g = geometry(&info(1920, 1080, 10));
-        assert_eq!((g.analysis_w, g.analysis_h, g.thumb_w, g.thumb_h), (480, 270, 160, 90));
+        assert_eq!(
+            (g.analysis_w, g.analysis_h, g.thumb_w, g.thumb_h),
+            (480, 270, 160, 90)
+        );
         let g = geometry(&info(1998, 836, 10)); // 2,39:1
         assert_eq!((g.thumb_w, g.thumb_h), (160, 66));
         let g = geometry(&info(64, 48, 10));
@@ -460,8 +522,15 @@ mod tests {
         let gpu = analysis_args_for(&i, Decoder::Gpu, GpuApi::Cuda);
         let at = |a: &[String], k: &str| a.iter().position(|x| x == k).unwrap();
         assert_eq!(gpu[at(&gpu, "-hwaccel") + 1], "cuda");
-        assert!(at(&gpu, "-hwaccel") < at(&gpu, "-i"), "-hwaccel doit précéder -i");
-        assert_eq!(gpu[at(&gpu, "-i") + 1], r"D:\Films\a b;c.mp4", "chemin = un seul argument");
+        assert!(
+            at(&gpu, "-hwaccel") < at(&gpu, "-i"),
+            "-hwaccel doit précéder -i"
+        );
+        assert_eq!(
+            gpu[at(&gpu, "-i") + 1],
+            r"D:\Films\a b;c.mp4",
+            "chemin = un seul argument"
+        );
         let vf = &gpu[at(&gpu, "-vf") + 1];
         assert!(vf.starts_with("scale_cuda=w=480:h=270,hwdownload,format=nv12,scdet="));
         assert!(vf.contains("file='pipe\\:2'"));
@@ -469,7 +538,9 @@ mod tests {
         assert_eq!(gpu[at(&gpu, "-fps_mode") + 1], "passthrough");
 
         let cpu = analysis_args(&i, Decoder::Cpu);
-        assert!(!cpu.iter().any(|x| x.contains("cuda") || x.contains("videotoolbox")));
+        assert!(!cpu
+            .iter()
+            .any(|x| x.contains("cuda") || x.contains("videotoolbox")));
         assert!(cpu[at(&cpu, "-vf") + 1].starts_with("scale=w=480:h=270"));
     }
 
@@ -479,8 +550,14 @@ mod tests {
         let at = |a: &[String], k: &str| a.iter().position(|x| x == k).unwrap();
         let vt = analysis_args_for(&i, Decoder::Gpu, GpuApi::VideoToolbox);
         assert_eq!(vt[at(&vt, "-hwaccel") + 1], "videotoolbox");
-        assert!(at(&vt, "-hwaccel") < at(&vt, "-i"), "-hwaccel doit précéder -i");
-        assert!(!vt.iter().any(|x| x == "-hwaccel_output_format"), "images rapatriées par FFmpeg");
+        assert!(
+            at(&vt, "-hwaccel") < at(&vt, "-i"),
+            "-hwaccel doit précéder -i"
+        );
+        assert!(
+            !vt.iter().any(|x| x == "-hwaccel_output_format"),
+            "images rapatriées par FFmpeg"
+        );
         assert!(!vt.iter().any(|x| x.contains("cuda")));
         // Après le décodage, filtres identiques au processeur : mêmes scores, mêmes vignettes.
         let cpu = analysis_args_for(&i, Decoder::Cpu, GpuApi::VideoToolbox);
@@ -491,7 +568,11 @@ mod tests {
 
     #[test]
     fn gpu_de_la_plateforme() {
-        let attendu = if cfg!(target_os = "macos") { "VideoToolbox" } else { "NVDEC" };
+        let attendu = if cfg!(target_os = "macos") {
+            "VideoToolbox"
+        } else {
+            "NVDEC"
+        };
         assert_eq!(GPU_DECODER, attendu);
     }
 
@@ -528,15 +609,25 @@ mod tests {
         // Ligne 0 = moyenne de (n,n,n) et (n,n,n) ; ligne 1 = moyenne de 0 et 100.
         assert_eq!(&r.columns[5 * 6..6 * 6], &[5, 5, 5, 50, 50, 50]);
         let kept: Vec<u64> = r.thumbs.keys().copied().collect();
-        assert_eq!(kept, vec![0, 24, 30, 40], "grille 1/s + débuts de plan potentiels");
+        assert_eq!(
+            kept,
+            vec![0, 24, 30, 40],
+            "grille 1/s + débuts de plan potentiels"
+        );
         assert_eq!(r.nearest_thumb(35, 30, 40), Some(30));
-        assert_eq!(r.nearest_thumb(45, 41, 48), Some(40), "rien dans le plan : la plus proche");
+        assert_eq!(
+            r.nearest_thumb(45, 41, 48),
+            Some(40),
+            "rien dans le plan : la plus proche"
+        );
     }
 
     #[test]
     fn detecte_un_echec_gpu() {
         assert!(looks_like_gpu_failure("Cannot load nvcuda.dll"));
-        assert!(looks_like_gpu_failure("Device creation failed: -1313558101."));
+        assert!(looks_like_gpu_failure(
+            "Device creation failed: -1313558101."
+        ));
         assert!(!looks_like_gpu_failure("moov atom not found"));
         assert!(!looks_like_gpu_failure("No space left on device"));
     }
@@ -549,10 +640,16 @@ mod tests {
         i.out_height = 1920;
         let g = geometry(&i);
         assert_eq!((g.thumb_w, g.thumb_h), (160, 284), "vignettes debout");
-        let vf = analysis_args_for(&i, Decoder::Gpu, GpuApi::Cuda).into_iter().find(|x| x.starts_with("scale_cuda")).unwrap();
+        let vf = analysis_args_for(&i, Decoder::Gpu, GpuApi::Cuda)
+            .into_iter()
+            .find(|x| x.starts_with("scale_cuda"))
+            .unwrap();
         // 480 px de large dans l'orientation finale (debout) = 854×480 dans celle du flux.
         assert!(vf.starts_with("scale_cuda=w=854:h=480,"), "{vf}");
-        assert!(vf.contains("scale=w=284:h=160") && vf.ends_with("transpose=cclock"), "{vf}");
+        assert!(
+            vf.contains("scale=w=284:h=160") && vf.ends_with("transpose=cclock"),
+            "{vf}"
+        );
         assert!(analysis_args(&i, Decoder::Cpu).contains(&"-noautorotate".to_string()));
     }
 }

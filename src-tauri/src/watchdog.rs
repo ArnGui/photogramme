@@ -45,7 +45,11 @@ pub fn on_focus(app: &AppHandle) {
         if let Some(last) = b.last {
             if !b.visible {
                 b.visible = true;
-                b.last = Some(Instant::now().checked_sub(SILENCE - ON_FOCUS).unwrap_or(last));
+                b.last = Some(
+                    Instant::now()
+                        .checked_sub(SILENCE - ON_FOCUS)
+                        .unwrap_or(last),
+                );
             }
         }
     }
@@ -57,7 +61,8 @@ pub fn start(app: AppHandle) {
         std::thread::sleep(Duration::from_secs(2));
         let silent = match app.state::<Watchdog>().0.lock() {
             Ok(mut b) => {
-                let silent = !b.alerted && b.visible && b.last.is_some_and(|t| t.elapsed() > SILENCE);
+                let silent =
+                    !b.alerted && b.visible && b.last.is_some_and(|t| t.elapsed() > SILENCE);
                 if silent {
                     b.alerted = true;
                 }
