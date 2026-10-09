@@ -260,6 +260,7 @@
       if (request.kind === "interval") return { count: Math.max(1, Math.floor(span / (request.seconds * FPS))), first: [] };
       return { count: Math.min(request.count, span), first: [] };
     },
+    heartbeat: () => null,
     batch_start: async ({ request, range, target, onEvent }) => {
       const job = state.nextJob++;
       const total = request.kind === "shots" ? request.shots.length : 6;

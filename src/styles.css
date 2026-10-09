@@ -806,3 +806,17 @@ dialog::backdrop { background: rgba(8, 8, 8, 0.6); }
 .accent-chip[data-chip="coral"] { --chip: #ff7a52; }
 .accent-chip[data-chip="teal"] { --chip: #3fbfae; }
 .accent-chip[data-chip="blue"] { --chip: #4f9cf0; }
+
+/* Écran d'erreur (CrashScreen) */
+.crash {
+  height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  padding: 32px; background: var(--bg); color: var(--text); text-align: center;
+}
+.crash-title { margin: 0; font-family: var(--f-label); font-weight: var(--label-weight); font-size: 20px; letter-spacing: 0.24em; color: var(--accent-ink); }
+.crash-text, .crash-hint { margin: 0; max-width: 560px; color: var(--text-2); }
+.crash-hint { font-size: 12px; color: var(--text-3); }
+.crash-details {
+  margin: 0; max-width: min(720px, 100%); max-height: 30vh; overflow: auto; padding: 10px 14px; white-space: pre-wrap; text-align: left;
+  font-family: var(--f-mono); font-size: 12px; color: var(--danger-fg); background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--r-small);
+}
+.crash-actions { display: flex; gap: 8px; }

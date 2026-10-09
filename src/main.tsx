@@ -16,6 +16,8 @@ import "@fontsource/archivo/600.css";
 import "@fontsource/archivo/700.css";
 import "./styles.css";
 import App from "./App";
+import { api } from "./api";
+import { CrashScreen } from "./CrashScreen";
 import { applyAppearance, savedAppearance } from "./theme";
 
 // Apparence posée avant le premier rendu : pas d'éclair de la mauvaise couleur au lancement.
@@ -23,9 +25,18 @@ applyAppearance(savedAppearance());
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
+    <CrashScreen>
+      <App />
+    </CrashScreen>
   </StrictMode>,
 );
+
+// Signe de vie pour le guetteur Rust : si le moteur de la fenêtre s'arrête (mémoire),
+// le Rust affiche un message natif au lieu d'une fenêtre noire.
+const beat = () => void api.heartbeat(document.visibilityState === "visible").catch(() => {});
+beat();
+setInterval(beat, 2000);
+document.addEventListener("visibilitychange", beat);
 
 // The app window must never scroll: only inner panels scroll.
 window.addEventListener("scroll", () => {

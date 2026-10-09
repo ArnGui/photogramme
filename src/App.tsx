@@ -106,6 +106,18 @@ export default function App() {
     if (m !== CANCELLED) setToast({ kind: "error", text: m });
   }, []);
   const closeToast = useCallback(() => setToast(null), []);
+  // Erreurs que rien n'a rattrapées : toujours un message, jamais un échec muet.
+  useEffect(() => {
+    // Avertissement bénin de Chromium, pas une erreur de l'application.
+    const onError = (e: ErrorEvent) => !/ResizeObserver loop/.test(e.message) && fail(e.error ?? e.message);
+    const onRejection = (e: PromiseRejectionEvent) => fail(e.reason);
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, [fail]);
 
   /* ───── Réglages : état local immédiat, enregistrement Rust différé ───── */
 
